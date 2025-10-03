@@ -19,32 +19,35 @@ def load_data():
     # Normalizar nomes das colunas
     df.columns = [c.strip() for c in df.columns]
     
-    # CALCULAR INDICADORES CONFORME ABA "INDICADORES" DO EXCEL
+    # CALCULAR INDICADORES CONFORME ABA "INDICADORES" DO EXCEL DA CPFE3
     
-    # 1. ROA (Return on Assets) - APENAS PARA LUCRO POSITIVO E ATIVO MÉDIO POSITIVO
+    # 1. ROA (Return on Assets) - CORRIGIDO: Usa Resultado Antes do Resultado Financeiro e dos Tributos
     df["Ativo Médio"] = (df["Ativo Total"] + df.groupby("Ticker")["Ativo Total"].shift(1)) / 2
     df["ROA"] = np.where(
-        (df["Ativo Médio"] > 0) & (df["Lucro/Prejuízo Consolidado do Período"] > 0),
-        df["Lucro/Prejuízo Consolidado do Período"] / df["Ativo Médio"],
+        df["Ativo Médio"] > 0,
+        df["Resultado Antes do Resultado Financeiro e dos Tributos"] / df["Ativo Médio"],
         np.nan
     )
     
-    # 2. ROI (Return on Investment) - APENAS PARA LUCRO POSITIVO E INVESTIMENTO POSITIVO
+    # 2. ROI (Return on Investment) - CORRIGIDO: Usa Resultado Antes do Resultado Financeiro e dos Tributos
     df["Investimento Médio"] = (
-        df["Empréstimos e Financiamentos - Circulante"].fillna(0) + 
-        df["Empréstimos e Financiamentos - Não Circulante"].fillna(0) + 
-        df["Patrimônio Líquido Consolidado"]
+        (df["Empréstimos e Financiamentos - Circulante"].fillna(0) + 
+         df["Empréstimos e Financiamentos - Não Circulante"].fillna(0) + 
+         df["Patrimônio Líquido Consolidado"] +
+         df.groupby("Ticker")["Empréstimos e Financiamentos - Circulante"].shift(1).fillna(0) +
+         df.groupby("Ticker")["Empréstimos e Financiamentos - Não Circulante"].shift(1).fillna(0) +
+         df.groupby("Ticker")["Patrimônio Líquido Consolidado"].shift(1).fillna(0)) / 2
     )
     df["ROI"] = np.where(
-        (df["Investimento Médio"] > 0) & (df["Lucro/Prejuízo Consolidado do Período"] > 0),
-        df["Lucro/Prejuízo Consolidado do Período"] / df["Investimento Médio"],
+        df["Investimento Médio"] > 0,
+        df["Resultado Antes do Resultado Financeiro e dos Tributos"] / df["Investimento Médio"],
         np.nan
     )
     
-    # 3. ROE (Return on Equity) - APENAS PARA LUCRO POSITIVO E PL MÉDIO POSITIVO
+    # 3. ROE (Return on Equity) - CORRIGIDO: Usa Lucro Líquido (já estava correto)
     df["PL Médio"] = (df["Patrimônio Líquido Consolidado"] + df.groupby("Ticker")["Patrimônio Líquido Consolidado"].shift(1)) / 2
     df["ROE"] = np.where(
-        (df["PL Médio"] > 0) & (df["Lucro/Prejuízo Consolidado do Período"] > 0),
+        df["PL Médio"] > 0,
         df["Lucro/Prejuízo Consolidado do Período"] / df["PL Médio"],
         np.nan
     )
@@ -78,10 +81,12 @@ def load_data():
         np.nan
     )
     
-    # 6. Custo da Dívida (ki)
+    # 6. Custo da Dívida (ki) - CORRIGIDO: Usa Despesas Financeiras (já estava correto)
     df["Passivo Oneroso Médio"] = (
-        df["Empréstimos e Financiamentos - Circulante"].fillna(0) + 
-        df["Empréstimos e Financiamentos - Não Circulante"].fillna(0)
+        (df["Empréstimos e Financiamentos - Circulante"].fillna(0) + 
+         df["Empréstimos e Financiamentos - Não Circulante"].fillna(0) +
+         df.groupby("Ticker")["Empréstimos e Financiamentos - Circulante"].shift(1).fillna(0) +
+         df.groupby("Ticker")["Empréstimos e Financiamentos - Não Circulante"].shift(1).fillna(0)) / 2
     )
     df["ki"] = np.where(
         (df["Passivo Oneroso Médio"] != 0) & (df["Despesas Financeiras"].notna()),
@@ -89,7 +94,7 @@ def load_data():
         np.nan
     )
     
-    # 7. Custo do Capital Próprio (ke)
+    # 7. Custo do Capital Próprio (ke) - CORRIGIDO: Usa Dividendos pagos (já estava correto)
     df["ke"] = np.where(
         (df["PL Médio"] != 0) & (df["Pagamento de Dividendos"].notna()),
         df["Pagamento de Dividendos"].abs() / df["PL Médio"],
@@ -110,7 +115,7 @@ def load_data():
     
     df["wacc"] = df.apply(calcular_wacc, axis=1)
     
-    # 9. Lucro Econômico
+    # 9. Lucro Econômico - CORRIGIDO: ROI usa Resultado Operacional, não Lucro Líquido
     df["Lucro Econômico 1"] = np.where(
         (df["ROI"].notna()) & (df["wacc"].notna()) & (df["Investimento Médio"].notna()),
         (df["ROI"] - df["wacc"]) * df["Investimento Médio"],
@@ -125,7 +130,7 @@ def load_data():
         np.nan
     )
     
-    # 10. EBITDA e ROI EBITDA
+    # 10. EBITDA e ROI EBITDA - CORRIGIDO: EBITDA = Resultado Operacional + Despesas Financeiras
     df["EBITDA"] = np.where(
         (df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna()) & 
         (df["Despesas Financeiras"].notna()),
@@ -357,7 +362,7 @@ elif modo_analise == "📈 Visão por Empresa":
                 st.metric("ROE", f"{valor_roe:.2%}")
             else:
                 st.metric("ROE*", "-", 
-                         help="ROE calculado apenas para empresas com lucro líquido positivo e patrimônio líquido médio positivo")
+                         help="ROE = Lucro Líquido ÷ PL Médio. Calculado apenas quando PL Médio > 0")
         
         with col2:
             valor_roa = df_filtrado["ROA"].iloc[0]
@@ -365,7 +370,7 @@ elif modo_analise == "📈 Visão por Empresa":
                 st.metric("ROA", f"{valor_roa:.2%}")
             else:
                 st.metric("ROA*", "-", 
-                         help="ROA calculado apenas para empresas com lucro líquido positivo e ativo médio positivo")
+                         help="ROA = Resultado Operacional ÷ Ativo Médio. Calculado apenas quando Ativo Médio > 0")
         
         with col3:
             valor_roi = df_filtrado["ROI"].iloc[0]
@@ -373,7 +378,7 @@ elif modo_analise == "📈 Visão por Empresa":
                 st.metric("ROI", f"{valor_roi:.2%}")
             else:
                 st.metric("ROI*", "-", 
-                         help="ROI calculado apenas para empresas com lucro líquido positivo e investimento médio positivo")
+                         help="ROI = Resultado Operacional ÷ Investimento Médio. Calculado apenas quando Investimento Médio > 0")
         
         with col4:
             valor_wacc = df_filtrado["wacc"].iloc[0]
@@ -604,18 +609,18 @@ st.header("📚 Fórmulas dos Indicadores")
 
 formulas = {
     "ROE (Return on Equity)": "Lucro Líquido ÷ Patrimônio Líquido Médio",
-    "ROA (Return on Assets)": "Lucro Líquido ÷ Ativo Total Médio", 
-    "ROI (Return on Investment)": "Lucro Líquido ÷ Investimento Médio",
-    "Investimento Médio": "Empréstimos (Circulante + Não Circulante) + Patrimônio Líquido",
+    "ROA (Return on Assets)": "Resultado Operacional ÷ Ativo Total Médio", 
+    "ROI (Return on Investment)": "Resultado Operacional ÷ Investimento Médio",
+    "Investimento Médio": "(Empréstimos Circulante + Empréstimos Não Circulante + Patrimônio Líquido) [média]",
     "Margem Bruta": "Resultado Bruto ÷ Receita de Vendas",
-    "Margem Operacional": "Resultado Antes do Resultado Financeiro e Tributos ÷ Receita de Vendas",
+    "Margem Operacional": "Resultado Operacional ÷ Receita de Vendas",
     "Margem Líquida": "Lucro Líquido ÷ Receita de Vendas",
     "ki (Custo da Dívida)": "Despesas Financeiras ÷ Passivo Oneroso Médio",
     "ke (Custo do Capital Próprio)": "Dividendos Pagos ÷ Patrimônio Líquido Médio",
     "WACC": "(ki × % Capital Terceiros) + (ke × % Capital Próprio)",
     "Lucro Econômico 1": "(ROI - WACC) × Investimento Médio",
     "Lucro Econômico 2": "Lucro Líquido - Despesas Financeiras - Dividendos",
-    "EBITDA": "Resultado Antes do Resultado Financeiro e Tributos + Despesas Financeiras",
+    "EBITDA": "Resultado Operacional + Despesas Financeiras",
     "ROI EBITDA": "EBITDA ÷ Investimento Médio",
     "Percentual Capital Terceiros": "(Passivo Circulante + Não Circulante) ÷ Passivo Total",
     "Percentual Capital Próprio": "Patrimônio Líquido ÷ Passivo Total"
@@ -660,8 +665,9 @@ with st.sidebar.expander("💡 Sobre os Cálculos"):
     - Dados em R$ mil, conforme padrão CVM
     - Tratamento de valores missing e divisão por zero
     
-    **Condições para cálculo:**
-    - ROE: Apenas quando Lucro Líquido > 0 e PL Médio > 0
-    - ROA: Apenas quando Lucro Líquido > 0 e Ativo Médio > 0  
-    - ROI: Apenas quando Lucro Líquido > 0 e Investimento Médio > 0
+    **Principais Correções:**
+    - ROA: Usa Resultado Operacional (não Lucro Líquido)
+    - ROI: Usa Resultado Operacional (não Lucro Líquido)
+    - EBITDA: Resultado Operacional + Despesas Financeiras
+    - Investimento Médio: Média entre períodos
     """)
