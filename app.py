@@ -34,7 +34,7 @@ df = load_data()
 # KPIs GERAIS
 # ==============================
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("Empresas", df["Empresa"].nunique())
+col1.metric("Empresas (Tickers)", df["Ticker"].nunique())
 col2.metric("Setores", df["Setor"].nunique())
 col3.metric("Período", f"{df['Ano'].min()} - {df['Ano'].max()}")
 col4.metric("Linhas", len(df))
@@ -51,24 +51,24 @@ opcao = st.sidebar.radio("Escolha a análise", ["📊 Ranking Geral", "🏭 Por 
 # RANKING GERAL
 # ==============================
 if opcao == "📊 Ranking Geral":
-    st.subheader("Top 10 Empresas - Lucro Líquido")
-    top_lucro = df.groupby("Empresa")["Lucro/Prejuízo Consolidado do Período"].sum().nlargest(10).reset_index()
-    fig1 = px.bar(top_lucro, x="Empresa", y="Lucro/Prejuízo Consolidado do Período", title="Top 10 por Lucro")
+    st.subheader("Top 10 Tickers - Lucro Líquido")
+    top_lucro = df.groupby("Ticker")["Lucro/Prejuízo Consolidado do Período"].sum().nlargest(10).reset_index()
+    fig1 = px.bar(top_lucro, x="Ticker", y="Lucro/Prejuízo Consolidado do Período", title="Top 10 por Lucro")
     st.plotly_chart(fig1, use_container_width=True)
 
-    st.subheader("Top 10 Empresas - Receita")
-    top_receita = df.groupby("Empresa")["Receita de Venda de Bens e/ou Serviços"].sum().nlargest(10).reset_index()
-    fig2 = px.bar(top_receita, x="Empresa", y="Receita de Venda de Bens e/ou Serviços", title="Top 10 por Receita")
+    st.subheader("Top 10 Tickers - Receita")
+    top_receita = df.groupby("Ticker")["Receita de Venda de Bens e/ou Serviços"].sum().nlargest(10).reset_index()
+    fig2 = px.bar(top_receita, x="Ticker", y="Receita de Venda de Bens e/ou Serviços", title="Top 10 por Receita")
     st.plotly_chart(fig2, use_container_width=True)
 
-    st.subheader("Top 10 Empresas - Ativo Total")
-    top_ativo = df.groupby("Empresa")["Ativo Total"].sum().nlargest(10).reset_index()
-    fig3 = px.bar(top_ativo, x="Empresa", y="Ativo Total", title="Top 10 por Ativo")
+    st.subheader("Top 10 Tickers - Ativo Total")
+    top_ativo = df.groupby("Ticker")["Ativo Total"].sum().nlargest(10).reset_index()
+    fig3 = px.bar(top_ativo, x="Ticker", y="Ativo Total", title="Top 10 por Ativo")
     st.plotly_chart(fig3, use_container_width=True)
 
-    st.subheader("Top 10 Empresas - Patrimônio Líquido")
-    top_pl = df.groupby("Empresa")["Patrimônio Líquido Consolidado"].sum().nlargest(10).reset_index()
-    fig4 = px.bar(top_pl, x="Empresa", y="Patrimônio Líquido Consolidado", title="Top 10 por Patrimônio Líquido")
+    st.subheader("Top 10 Tickers - Patrimônio Líquido")
+    top_pl = df.groupby("Ticker")["Patrimônio Líquido Consolidado"].sum().nlargest(10).reset_index()
+    fig4 = px.bar(top_pl, x="Ticker", y="Patrimônio Líquido Consolidado", title="Top 10 por Patrimônio Líquido")
     st.plotly_chart(fig4, use_container_width=True)
 
 # ==============================
@@ -80,22 +80,25 @@ elif opcao == "🏭 Por Setor":
 
     st.subheader(f"📊 Análise do Setor: {setor}")
 
-    top_setor = df_setor.groupby("Empresa")["Receita de Venda de Bens e/ou Serviços"].sum().nlargest(10).reset_index()
-    fig5 = px.bar(top_setor, x="Empresa", y="Receita de Venda de Bens e/ou Serviços", title=f"Top 10 Empresas por Receita ({setor})")
+    top_setor = df_setor.groupby("Ticker")["Receita de Venda de Bens e/ou Serviços"].sum().nlargest(10).reset_index()
+    fig5 = px.bar(top_setor, x="Ticker", y="Receita de Venda de Bens e/ou Serviços", title=f"Top 10 Tickers por Receita ({setor})")
     st.plotly_chart(fig5, use_container_width=True)
 
-    fig6 = px.scatter(df_setor, x="Receita de Venda de Bens e/ou Serviços", y="Lucro/Prejuízo Consolidado do Período",
-                      size="Ativo Total", color="Empresa", title=f"Receita vs Lucro ({setor})")
+    fig6 = px.scatter(df_setor,
+                      x="Receita de Venda de Bens e/ou Serviços",
+                      y="Lucro/Prejuízo Consolidado do Período",
+                      size="Ativo Total", color="Ticker",
+                      title=f"Receita vs Lucro ({setor})")
     st.plotly_chart(fig6, use_container_width=True)
 
 # ==============================
-# POR EMPRESA
+# POR EMPRESA (TICKER)
 # ==============================
 elif opcao == "🏢 Por Empresa":
-    empresa = st.sidebar.selectbox("Selecione a empresa", sorted(df["Empresa"].dropna().unique()))
-    df_emp = df[df["Empresa"] == empresa]
+    ticker = st.sidebar.selectbox("Selecione o ticker", sorted(df["Ticker"].dropna().unique()))
+    df_emp = df[df["Ticker"] == ticker]
 
-    st.subheader(f"📈 Evolução da Empresa: {empresa}")
+    st.subheader(f"📈 Evolução do Ticker: {ticker}")
 
     fig7 = px.line(df_emp, x="Ano", y="Lucro/Prejuízo Consolidado do Período", title="Lucro por Ano")
     st.plotly_chart(fig7, use_container_width=True)
