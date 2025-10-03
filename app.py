@@ -21,30 +21,30 @@ def load_data():
     
     # CALCULAR INDICADORES CONFORME ABA "INDICADORES" DO EXCEL
     
-    # 1. ROA (Return on Assets)
+    # 1. ROA (Return on Assets) - APENAS PARA LUCRO POSITIVO E ATIVO MÉDIO POSITIVO
     df["Ativo Médio"] = (df["Ativo Total"] + df.groupby("Ticker")["Ativo Total"].shift(1)) / 2
     df["ROA"] = np.where(
-        df["Ativo Médio"] != 0,
+        (df["Ativo Médio"] > 0) & (df["Lucro/Prejuízo Consolidado do Período"] > 0),
         df["Lucro/Prejuízo Consolidado do Período"] / df["Ativo Médio"],
         np.nan
     )
     
-    # 2. ROI (Return on Investment)
+    # 2. ROI (Return on Investment) - APENAS PARA LUCRO POSITIVO E INVESTIMENTO POSITIVO
     df["Investimento Médio"] = (
         df["Empréstimos e Financiamentos - Circulante"].fillna(0) + 
         df["Empréstimos e Financiamentos - Não Circulante"].fillna(0) + 
         df["Patrimônio Líquido Consolidado"]
     )
     df["ROI"] = np.where(
-        df["Investimento Médio"] != 0,
+        (df["Investimento Médio"] > 0) & (df["Lucro/Prejuízo Consolidado do Período"] > 0),
         df["Lucro/Prejuízo Consolidado do Período"] / df["Investimento Médio"],
         np.nan
     )
     
-    # 3. ROE (Return on Equity)
+    # 3. ROE (Return on Equity) - APENAS PARA LUCRO POSITIVO E PL MÉDIO POSITIVO
     df["PL Médio"] = (df["Patrimônio Líquido Consolidado"] + df.groupby("Ticker")["Patrimônio Líquido Consolidado"].shift(1)) / 2
     df["ROE"] = np.where(
-        df["PL Médio"] != 0,
+        (df["PL Médio"] > 0) & (df["Lucro/Prejuízo Consolidado do Período"] > 0),
         df["Lucro/Prejuízo Consolidado do Período"] / df["PL Médio"],
         np.nan
     )
@@ -417,4 +417,9 @@ with st.sidebar.expander("💡 Sobre os Cálculos"):
     - Valores médios calculados entre período atual e anterior
     - Dados em R$ mil, conforme padrão CVM
     - Tratamento de valores missing e divisão por zero
+    
+    **Condições para cálculo:**
+    - ROE: Apenas quando Lucro Líquido > 0 e PL Médio > 0
+    - ROA: Apenas quando Lucro Líquido > 0 e Ativo Médio > 0  
+    - ROI: Apenas quando Lucro Líquido > 0 e Investimento Médio > 0
     """)
