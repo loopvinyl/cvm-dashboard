@@ -19,17 +19,26 @@ def load_data():
     # Normalizar nomes das colunas
     df.columns = [c.strip() for c in df.columns]
     
-    # CALCULAR INDICADORES CONFORME ABA "INDICADORES" DO EXCEL DA CPFE3
+    # =============================================
+    # MAPEAMENTO DAS CONTAS BASEADO NO EXCEL CPFE3
+    # =============================================
     
-    # 1. ROA (Return on Assets) - CORRIGIDO: Usa Resultado Antes do Resultado Financeiro e dos Tributos
+    # 1. CÁLCULOS DE MÉDIAS (conforme aba "Indicadores" do Excel)
+    
+    # Ativo Médio = (Ativo Total atual + Ativo Total anterior) / 2
     df["Ativo Médio"] = (df["Ativo Total"] + df.groupby("Ticker")["Ativo Total"].shift(1)) / 2
-    df["ROA"] = np.where(
-        df["Ativo Médio"] > 0,
-        df["Resultado Antes do Resultado Financeiro e dos Tributos"] / df["Ativo Médio"],
-        np.nan
+    
+    # PL Médio = (Patrimônio Líquido atual + Patrimônio Líquido anterior) / 2
+    df["PL Médio"] = (df["Patrimônio Líquido Consolidado"] + df.groupby("Ticker")["Patrimônio Líquido Consolidado"].shift(1)) / 2
+    
+    # Passivo Oneroso Médio = (Empréstimos Circulante + Empréstimos Não Circulante) [média entre períodos]
+    df["Passivo Oneroso Médio"] = (
+        (df["Empréstimos e Financiamentos - Circulante"].fillna(0) + 
+         df["Empréstimos e Financiamentos - Não Circulante"].fillna(0) +
+         df.groupby("Ticker")["Empréstimos e Financiamentos - Circulante"].shift(1).fillna(0) +
+         df.groupby("Ticker")["Empréstimos e Financiamentos - Não Circulante"].shift(1).fillna(0)) / 2
     )
     
-    # 2. ROI (Return on Investment) - CORRIGIDO: Usa Resultado Antes do Resultado Financeiro e dos Tributos
     # Investimento Médio = (Empréstimos Circulante + Empréstimos Não Circulante + Patrimônio Líquido) [média entre períodos]
     df["Investimento Médio"] = (
         (df["Empréstimos e Financiamentos - Circulante"].fillna(0) + 
@@ -39,71 +48,102 @@ def load_data():
          df.groupby("Ticker")["Empréstimos e Financiamentos - Não Circulante"].shift(1).fillna(0) +
          df.groupby("Ticker")["Patrimônio Líquido Consolidado"].shift(1).fillna(0)) / 2
     )
+    
+    # =============================================
+    # INDICADORES DE RENTABILIDADE (conforme Excel)
+    # =============================================
+    
+    # ROA = Resultado Antes do Resultado Financeiro e dos Tributos / Ativo Médio
+    df["ROA"] = np.where(
+        df["Ativo Médio"] > 0,
+        df["Resultado Antes do Resultado Financeiro e dos Tributos"] / df["Ativo Médio"],
+        np.nan
+    )
+    
+    # ROI = Resultado Antes do Resultado Financeiro e dos Tributos / Investimento Médio
     df["ROI"] = np.where(
         df["Investimento Médio"] > 0,
         df["Resultado Antes do Resultado Financeiro e dos Tributos"] / df["Investimento Médio"],
         np.nan
     )
     
-    # 3. ROE (Return on Equity) - CORRIGIDO: Usa Lucro Líquido
-    df["PL Médio"] = (df["Patrimônio Líquido Consolidado"] + df.groupby("Ticker")["Patrimônio Líquido Consolidado"].shift(1)) / 2
+    # ROE = Lucro Líquido / PL Médio
     df["ROE"] = np.where(
         df["PL Médio"] > 0,
         df["Lucro/Prejuízo Consolidado do Período"] / df["PL Médio"],
         np.nan
     )
     
-    # 4. Estrutura de Capital
-    df["Total Passivo"] = df["Passivo Circulante"].fillna(0) + df["Passivo Não Circulante"].fillna(0) + df["Patrimônio Líquido Consolidado"].fillna(0)
+    # =============================================
+    # MARGENS (conforme aba DRE do Excel)
+    # =============================================
+    
+    # Margem Bruta = Resultado Bruto / Receita
+    df["Margem Bruta"] = np.where(
+        df["Receita de Venda de Bens e/ou Serviços"] > 0,
+        df["Resultado Bruto"] / df["Receita de Venda de Bens e/ou Serviços"],
+        np.nan
+    )
+    
+    # Margem Operacional = Resultado Operacional / Receita
+    df["Margem Operacional"] = np.where(
+        df["Receita de Venda de Bens e/ou Serviços"] > 0,
+        df["Resultado Antes do Resultado Financeiro e dos Tributos"] / df["Receita de Venda de Bens e/ou Serviços"],
+        np.nan
+    )
+    
+    # Margem Líquida = Lucro Líquido / Receita
+    df["Margem Líquida"] = np.where(
+        df["Receita de Venda de Bens e/ou Serviços"] > 0,
+        df["Lucro/Prejuízo Consolidado do Período"] / df["Receita de Venda de Bens e/ou Serviços"],
+        np.nan
+    )
+    
+    # =============================================
+    # ESTRUTURA DE CAPITAL (conforme aba BP do Excel)
+    # =============================================
+    
+    # Total do Passivo = Passivo Circulante + Passivo Não Circulante + Patrimônio Líquido
+    df["Total Passivo"] = (
+        df["Passivo Circulante"].fillna(0) + 
+        df["Passivo Não Circulante"].fillna(0) + 
+        df["Patrimônio Líquido Consolidado"].fillna(0)
+    )
+    
+    # Percentual Capital Terceiros = (Passivo Circulante + Passivo Não Circulante) / Total Passivo
     df["Percentual Capital Terceiros"] = np.where(
         df["Total Passivo"] > 0,
         (df["Passivo Circulante"].fillna(0) + df["Passivo Não Circulante"].fillna(0)) / df["Total Passivo"],
         np.nan
     )
+    
+    # Percentual Capital Próprio = Patrimônio Líquido / Total Passivo
     df["Percentual Capital Próprio"] = np.where(
         df["Total Passivo"] > 0,
         df["Patrimônio Líquido Consolidado"] / df["Total Passivo"],
         np.nan
     )
     
-    # 5. Margens
-    df["Margem Bruta"] = np.where(
-        df["Receita de Venda de Bens e/ou Serviços"] != 0,
-        df["Resultado Bruto"] / df["Receita de Venda de Bens e/ou Serviços"],
-        np.nan
-    )
-    df["Margem Operacional"] = np.where(
-        df["Receita de Venda de Bens e/ou Serviços"] != 0,
-        df["Resultado Antes do Resultado Financeiro e dos Tributos"] / df["Receita de Venda de Bens e/ou Serviços"],
-        np.nan
-    )
-    df["Margem Líquida"] = np.where(
-        df["Receita de Venda de Bens e/ou Serviços"] != 0,
-        df["Lucro/Prejuízo Consolidado do Período"] / df["Receita de Venda de Bens e/ou Serviços"],
-        np.nan
-    )
+    # =============================================
+    # CUSTO DE CAPITAL (conforme aba "Indicadores" do Excel)
+    # =============================================
     
-    # 6. Custo da Dívida (ki) - CORRIGIDO: Passivo Oneroso Médio = média dos empréstimos
-    df["Passivo Oneroso Médio"] = (
-        (df["Empréstimos e Financiamentos - Circulante"].fillna(0) + 
-         df["Empréstimos e Financiamentos - Não Circulante"].fillna(0) +
-         df.groupby("Ticker")["Empréstimos e Financiamentos - Circulante"].shift(1).fillna(0) +
-         df.groupby("Ticker")["Empréstimos e Financiamentos - Não Circulante"].shift(1).fillna(0)) / 2
-    )
+    # ki (Custo da Dívida) = Despesas Financeiras / Passivo Oneroso Médio
     df["ki"] = np.where(
         (df["Passivo Oneroso Médio"] > 0) & (df["Despesas Financeiras"].notna()),
         df["Despesas Financeiras"].abs() / df["Passivo Oneroso Médio"],
         np.nan
     )
     
-    # 7. Custo do Capital Próprio (ke) - CORRIGIDO: Usa Pagamento de Dividendos (total)
+    # ke (Custo do Capital Próprio) = Dividendos Pagos / PL Médio
+    # NOTA: No Excel, usa "Dividendo e juros sobre o capital próprio pagos" da aba DFC
     df["ke"] = np.where(
         (df["PL Médio"] > 0) & (df["Pagamento de Dividendos"].notna()),
         df["Pagamento de Dividendos"].abs() / df["PL Médio"],
         np.nan
     )
     
-    # 8. WACC (Weighted Average Cost of Capital) - CORRIGIDO: Fórmula correta
+    # WACC = (ki × % Capital Terceiros) + (ke × % Capital Próprio)
     df["wacc"] = np.where(
         (df["ki"].notna()) & (df["ke"].notna()) & 
         (df["Percentual Capital Terceiros"].notna()) & (df["Percentual Capital Próprio"].notna()),
@@ -111,14 +151,33 @@ def load_data():
         np.nan
     )
     
-    # 9. Lucro Econômico 1 - CORRIGIDO: (ROI - WACC) × Investimento Médio
+    # =============================================
+    # EBITDA E LUCRO ECONÔMICO (conforme Excel)
+    # =============================================
+    
+    # EBITDA = Resultado Operacional + Despesas Financeiras
+    df["EBITDA"] = np.where(
+        (df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna()) & 
+        (df["Despesas Financeiras"].notna()),
+        df["Resultado Antes do Resultado Financeiro e dos Tributos"] + df["Despesas Financeiras"].abs(),
+        np.nan
+    )
+    
+    # ROI EBITDA = EBITDA / Investimento Médio
+    df["ROI EBITDA"] = np.where(
+        (df["EBITDA"].notna()) & (df["Investimento Médio"] > 0),
+        df["EBITDA"] / df["Investimento Médio"],
+        np.nan
+    )
+    
+    # Lucro Econômico 1 = (ROI - WACC) × Investimento Médio
     df["Lucro Econômico 1"] = np.where(
         (df["ROI"].notna()) & (df["wacc"].notna()) & (df["Investimento Médio"].notna()),
         (df["ROI"] - df["wacc"]) * df["Investimento Médio"],
         np.nan
     )
     
-    # 10. Lucro Econômico 2 - CORRIGIDO: Lucro Líquido - Despesas Financeiras - Dividendos
+    # Lucro Econômico 2 = Lucro Líquido - Despesas Financeiras - Dividendos
     df["Lucro Econômico 2"] = np.where(
         (df["Lucro/Prejuízo Consolidado do Período"].notna()) & 
         (df["Despesas Financeiras"].notna()) & 
@@ -127,24 +186,22 @@ def load_data():
         np.nan
     )
     
-    # 11. EBITDA e ROI EBITDA - CORRIGIDO: EBITDA = Resultado Operacional + Despesas Financeiras
-    df["EBITDA"] = np.where(
-        (df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna()) & 
-        (df["Despesas Financeiras"].notna()),
-        df["Resultado Antes do Resultado Financeiro e dos Tributos"] + df["Despesas Financeiras"].abs(),
-        np.nan
-    )
-    
-    df["ROI EBITDA"] = np.where(
-        (df["EBITDA"].notna()) & (df["Investimento Médio"] > 0),
-        df["EBITDA"] / df["Investimento Médio"],
-        np.nan
-    )
-    
+    # Lucro Econômico EBITDA = (ROI EBITDA - WACC) × Investimento Médio
     df["Lucro Econômico EBITDA"] = np.where(
         (df["ROI EBITDA"].notna()) & (df["wacc"].notna()) & (df["Investimento Médio"].notna()),
         (df["ROI EBITDA"] - df["wacc"]) * df["Investimento Médio"],
         np.nan
+    )
+    
+    # =============================================
+    # ANÁLISE DE ALAVANCAGEM (conforme Excel)
+    # =============================================
+    
+    # Verifica se a alavancagem é eficaz
+    df["Alavancagem Eficaz"] = np.where(
+        (df["ROE"].notna()) & (df["ROA"].notna()) & (df["ROI"].notna()),
+        (df["ROE"] > df["ROA"]) & (df["ROE"] > df["ROI"]),
+        False
     )
     
     return df
@@ -385,13 +442,21 @@ elif modo_analise == "📈 Visão por Empresa":
                 st.metric("WACC*", "-", 
                          help="WACC não pôde ser calculado devido a dados insuficientes")
         
-        # Legenda explicativa para os asteriscos
-        st.caption("* Indicadores marcados com asterisco não puderam ser calculados devido a condições específicas (ver tooltips)")
+        # Análise de Alavancagem
+        st.subheader("🔍 Análise de Alavancagem")
+        if pd.notna(df_filtrado["Alavancagem Eficaz"].iloc[0]):
+            if df_filtrado["Alavancagem Eficaz"].iloc[0]:
+                st.success("✅ Alavancagem com Eficácia: SIM")
+                st.write(f"ROE ({df_filtrado['ROE'].iloc[0]:.2%}) > ROA ({df_filtrado['ROA'].iloc[0]:.2%}) > ROI ({df_filtrado['ROI'].iloc[0]:.2%})")
+            else:
+                st.warning("⚠️ Alavancagem com Eficácia: NÃO")
+        else:
+            st.info("ℹ️ Análise de alavancagem não disponível")
         
         st.divider()
         
         # Abas para diferentes categorias de indicadores
-        tab1, tab2, tab3, tab4 = st.tabs(["📈 Rentabilidade", "🏛️ Estrutura Capital", "💰 Custo Capital", "📊 Lucro Econômico"])
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(["📈 Rentabilidade", "🏛️ Estrutura Capital", "💰 Custo Capital", "📊 Lucro Econômico", "📋 Dados Brutos"])
         
         with tab1:
             st.subheader("Indicadores de Rentabilidade")
@@ -516,6 +581,25 @@ elif modo_analise == "📈 Visão por Empresa":
                 st.dataframe(lucro_df[["Indicador", "Valor (R$ Mil)"]], use_container_width=True, hide_index=True)
             else:
                 st.warning("Não há dados de lucro econômico disponíveis")
+        
+        with tab5:
+            st.subheader("Dados Financeiros Brutos (R$ Mil)")
+            dados_brutos = df_filtrado[[
+                "Receita de Venda de Bens e/ou Serviços",
+                "Resultado Bruto", 
+                "Resultado Antes do Resultado Financeiro e dos Tributos",
+                "Lucro/Prejuízo Consolidado do Período",
+                "Despesas Financeiras",
+                "Pagamento de Dividendos",
+                "Ativo Total",
+                "Patrimônio Líquido Consolidado",
+                "Empréstimos e Financiamentos - Circulante",
+                "Empréstimos e Financiamentos - Não Circulante"
+            ]].iloc[0]
+            
+            # Formatar valores em milhões
+            dados_formatados = (dados_brutos / 1000).apply(lambda x: f"R$ {x:,.0f}" if pd.notna(x) else "N/A")
+            st.dataframe(dados_formatados.to_frame("Valor (R$ Mil)"), use_container_width=True)
     
     else:
         st.warning(f"Não há dados disponíveis para {ticker_selecionado} no ano {ano_selecionado}")
@@ -602,13 +686,13 @@ elif modo_analise == "🏭 Análise Setorial":
 # SEÇÃO DE FÓRMULAS DOS INDICADORES
 # ==============================
 st.divider()
-st.header("📚 Fórmulas dos Indicadores")
+st.header("📚 Fórmulas dos Indicadores (Base CPFE3)")
 
 formulas = {
     "ROE (Return on Equity)": "Lucro Líquido ÷ Patrimônio Líquido Médio",
     "ROA (Return on Assets)": "Resultado Operacional ÷ Ativo Total Médio", 
     "ROI (Return on Investment)": "Resultado Operacional ÷ Investimento Médio",
-    "Investimento Médio": "(Empréstimos Circulante + Empréstimos Não Circulante + Patrimônio Líquido) [média entre períodos]",
+    "Investimento Médio": "Média[(Empréstimos Circulante + Empréstimos Não Circulante + PL) atual e anterior]",
     "Margem Bruta": "Resultado Bruto ÷ Receita de Vendas",
     "Margem Operacional": "Resultado Operacional ÷ Receita de Vendas",
     "Margem Líquida": "Lucro Líquido ÷ Receita de Vendas",
@@ -654,14 +738,25 @@ st.divider()
 st.caption(f"📊 Dashboard CVM - Indicadores Financeiros | Dados atualizados para {ano_selecionado} | Total de empresas na base: {df['Ticker'].nunique()}")
 
 # Adicionar informações sobre os cálculos
-with st.sidebar.expander("💡 Sobre os Cálculos"):
+with st.sidebar.expander("💡 Metodologia CPFE3"):
     st.write("""
-    **Metodologia baseada na planilha CPFE3:**
+    **Baseado na planilha modelo CPFE3:**
+    
+    **Fontes dos Dados:**
+    - BP (Balanço Patrimonial): Ativo Total, Passivos, Patrimônio Líquido
+    - DRE (Demonstração Resultado): Receita, Resultados, Despesas Financeiras  
+    - DFC (Fluxo de Caixa): Dividendos Pagos
+    - Qtde.Ações: Quantidade de ações
+    
+    **Cálculos Principais:**
     - ROA: Resultado Operacional ÷ Ativo Médio
-    - ROI: Resultado Operacional ÷ Investimento Médio  
+    - ROI: Resultado Operacional ÷ Investimento Médio
     - ROE: Lucro Líquido ÷ PL Médio
     - WACC: (ki × % Capital Terceiros) + (ke × % Capital Próprio)
-    - Investimento Médio: Média entre períodos de (Empréstimos + Patrimônio Líquido)
-    - Passivo Oneroso Médio: Média entre períodos de Empréstimos
-    - Estrutura de Capital: Baseada no Total do Passivo (Circulante + Não Circulante + PL)
+    
+    **Valores de Referência CPFE3:**
+    - ROA: 14.24%
+    - ROI: 22.33% 
+    - ROE: 27.57%
+    - WACC: 16.13%
     """)
