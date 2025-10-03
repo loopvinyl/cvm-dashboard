@@ -14,7 +14,7 @@ st.title("📊 Dashboard CVM - Análise de Indicadores Financeiros")
 # ==============================
 @st.cache_data
 def load_data():
-    df = pd.read_excel("data_frame_2010_2024.xlsx")
+    df = pd.read_excel("data_frame.xlsx")
     
     # Normalizar nomes das colunas
     df.columns = [c.strip() for c in df.columns]
