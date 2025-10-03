@@ -1,420 +1,299 @@
-import streamlit as st
 import pandas as pd
-import plotly.express as px
 import numpy as np
+from datetime import datetime
 
-# ==============================
-# CONFIGURAÇÕES INICIAIS
-# ==============================
-st.set_page_config(page_title="Dashboard CVM - Indicadores", layout="wide")
-st.title("📊 Dashboard CVM - Análise de Indicadores Financeiros")
+# Configurações
+TEMPLATE_PATH = '/content/template_scraping_2023_2024_completo.xlsx'
+OUTPUT_PATH = '/content/dados_contabeis_reais_2009_2024_corrigido.xlsx'
 
-# ==============================
-# LEITURA DE DADOS
-# ==============================
-@st.cache_data
-def load_data():
-    df = pd.read_excel("data_frame.xlsx")
-    
-    # Normalizar nomes das colunas
-    df.columns = [c.strip() for c in df.columns]
-    
-    # CALCULAR INDICADORES CONFORME ABA "INDICADORES" DO EXCEL
-    
-    # 1. ROA (Return on Assets)
-    df["Ativo Médio"] = (df["Ativo Total"] + df.groupby("Ticker")["Ativo Total"].shift(1)) / 2
-    df["ROA"] = np.where(
-        df["Ativo Médio"] != 0,
-        df["Lucro/Prejuízo Consolidado do Período"] / df["Ativo Médio"],
-        np.nan
-    )
-    
-    # 2. ROI (Return on Investment)
-    df["Investimento Médio"] = (
-        df["Empréstimos e Financiamentos - Circulante"].fillna(0) + 
-        df["Empréstimos e Financiamentos - Não Circulante"].fillna(0) + 
-        df["Patrimônio Líquido Consolidado"]
-    )
-    df["ROI"] = np.where(
-        df["Investimento Médio"] != 0,
-        df["Lucro/Prejuízo Consolidado do Período"] / df["Investimento Médio"],
-        np.nan
-    )
-    
-    # 3. ROE (Return on Equity)
-    df["PL Médio"] = (df["Patrimônio Líquido Consolidado"] + df.groupby("Ticker")["Patrimônio Líquido Consolidado"].shift(1)) / 2
-    df["ROE"] = np.where(
-        df["PL Médio"] != 0,
-        df["Lucro/Prejuízo Consolidado do Período"] / df["PL Médio"],
-        np.nan
-    )
-    
-    # 4. Estrutura de Capital
-    df["Percentual Capital Terceiros"] = np.where(
-        df["Passivo Total"] != 0,
-        (df["Passivo Circulante"].fillna(0) + df["Passivo Não Circulante"].fillna(0)) / df["Passivo Total"],
-        np.nan
-    )
-    df["Percentual Capital Próprio"] = np.where(
-        df["Passivo Total"] != 0,
-        df["Patrimônio Líquido Consolidado"] / df["Passivo Total"],
-        np.nan
-    )
-    
-    # 5. Margens
-    df["Margem Bruta"] = np.where(
-        df["Receita de Venda de Bens e/ou Serviços"] != 0,
-        df["Resultado Bruto"] / df["Receita de Venda de Bens e/ou Serviços"],
-        np.nan
-    )
-    df["Margem Operacional"] = np.where(
-        df["Receita de Venda de Bens e/ou Serviços"] != 0,
-        df["Resultado Antes do Resultado Financeiro e dos Tributos"] / df["Receita de Venda de Bens e/ou Serviços"],
-        np.nan
-    )
-    df["Margem Líquida"] = np.where(
-        df["Receita de Venda de Bens e/ou Serviços"] != 0,
-        df["Lucro/Prejuízo Consolidado do Período"] / df["Receita de Venda de Bens e/ou Serviços"],
-        np.nan
-    )
-    
-    # 6. Custo da Dívida (ki)
-    df["Passivo Oneroso Médio"] = (
-        df["Empréstimos e Financiamentos - Circulante"].fillna(0) + 
-        df["Empréstimos e Financiamentos - Não Circulante"].fillna(0)
-    )
-    df["ki"] = np.where(
-        (df["Passivo Oneroso Médio"] != 0) & (df["Despesas Financeiras"].notna()),
-        df["Despesas Financeiras"].abs() / df["Passivo Oneroso Médio"],
-        np.nan
-    )
-    
-    # 7. Custo do Capital Próprio (ke)
-    df["ke"] = np.where(
-        (df["PL Médio"] != 0) & (df["Pagamento de Dividendos"].notna()),
-        df["Pagamento de Dividendos"].abs() / df["PL Médio"],
-        np.nan
-    )
-    
-    # 8. WACC (Weighted Average Cost of Capital)
-    def calcular_wacc(row):
-        try:
-            if (pd.notna(row['Passivo Oneroso Médio']) and pd.notna(row['PL Médio']) and 
-                pd.notna(row['ki']) and pd.notna(row['ke'])):
-                total_capital = row['Passivo Oneroso Médio'] + row['PL Médio']
-                if total_capital > 0:
-                    return ((row['ki'] * row['Passivo Oneroso Médio']) + (row['ke'] * row['PL Médio'])) / total_capital
-            return np.nan
-        except:
-            return np.nan
-    
-    df["wacc"] = df.apply(calcular_wacc, axis=1)
-    
-    # 9. Lucro Econômico
-    df["Lucro Econômico 1"] = np.where(
-        (df["ROI"].notna()) & (df["wacc"].notna()) & (df["Investimento Médio"].notna()),
-        (df["ROI"] - df["wacc"]) * df["Investimento Médio"],
-        np.nan
-    )
-    
-    df["Lucro Econômico 2"] = np.where(
-        (df["Lucro/Prejuízo Consolidado do Período"].notna()) & 
-        (df["Despesas Financeiras"].notna()) & 
-        (df["Pagamento de Dividendos"].notna()),
-        df["Lucro/Prejuízo Consolidado do Período"] - df["Despesas Financeiras"].abs() - df["Pagamento de Dividendos"].abs(),
-        np.nan
-    )
-    
-    # 10. EBITDA e ROI EBITDA
-    df["EBITDA"] = np.where(
-        (df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna()) & 
-        (df["Despesas Financeiras"].notna()),
-        df["Resultado Antes do Resultado Financeiro e dos Tributos"] + df["Despesas Financeiras"].abs(),
-        np.nan
-    )
-    
-    df["ROI EBITDA"] = np.where(
-        (df["EBITDA"].notna()) & (df["Investimento Médio"] != 0),
-        df["EBITDA"] / df["Investimento Médio"],
-        np.nan
-    )
-    
-    df["Lucro Econômico EBITDA"] = np.where(
-        (df["ROI EBITDA"].notna()) & (df["wacc"].notna()) & (df["Investimento Médio"].notna()),
-        (df["ROI EBITDA"] - df["wacc"]) * df["Investimento Médio"],
-        np.nan
-    )
-    
-    return df
-
-df = load_data()
-
-# ==============================
-# SIDEBAR - FILTROS PRINCIPAIS
-# ==============================
-st.sidebar.header("🔧 Filtros Principais")
-
-# Seleção de modo de análise - RANKING COMO PRIMEIRA OPÇÃO
-modo_analise = st.sidebar.radio(
-    "Modo de Análise:",
-    ["🏆 Ranking Comparativo", "📈 Visão por Empresa", "🏭 Análise Setorial"]
-)
-
-# Filtro de ano
-anos_disponiveis = sorted(df["Ano"].unique(), reverse=True)
-ano_selecionado = st.sidebar.selectbox("Selecione o Ano:", anos_disponiveis)
-
-# Filtro baseado no modo de análise
-if modo_analise == "📈 Visão por Empresa":
-    ticker_selecionado = st.sidebar.selectbox(
-        "Selecione a Empresa:",
-        sorted(df["Ticker"].dropna().unique())
-    )
-    df_filtrado = df[(df["Ticker"] == ticker_selecionado) & (df["Ano"] == ano_selecionado)]
-    
-elif modo_analise == "🏭 Análise Setorial":
-    setor_selecionado = st.sidebar.selectbox(
-        "Selecione o Setor:",
-        sorted(df["SETOR_ATIV"].dropna().unique())
-    )
-    df_filtrado = df[(df["SETOR_ATIV"] == setor_selecionado) & (df["Ano"] == ano_selecionado)]
-    
-else:  # Ranking Comparativo (PRINCIPAL)
-    df_filtrado = df[df["Ano"] == ano_selecionado]
-
-# ==============================
-# TELA PRINCIPAL - RANKING COMPARATIVO
-# ==============================
-if modo_analise == "🏆 Ranking Comparativo":
-    st.header(f"🏆 Ranking Comparativo ({ano_selecionado})")
-    
-    # KPIs Gerais no Topo
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        empresas_ativas = df_filtrado["Ticker"].nunique()
-        st.metric("Empresas Analisadas", empresas_ativas)
-    
-    with col2:
-        setores_ativos = df_filtrado["SETOR_ATIV"].nunique()
-        st.metric("Setores Representados", setores_ativos)
-    
-    with col3:
-        receita_total = df_filtrado["Receita de Venda de Bens e/ou Serviços"].sum() / 1e9
-        st.metric("Receita Total (R$ Bi)", f"R$ {receita_total:.2f}")
-    
-    with col4:
-        lucro_total = df_filtrado["Lucro/Prejuízo Consolidado do Período"].sum() / 1e9
-        st.metric("Lucro Total (R$ Bi)", f"R$ {lucro_total:.2f}")
-    
-    st.divider()
-    
-    # Abas para diferentes rankings
-    rank_tab1, rank_tab2, rank_tab3, rank_tab4 = st.tabs(["📈 Rentabilidade", "💰 Valor de Mercado", "🏛️ Solidez", "📊 Eficiência"])
-    
-    with rank_tab1:
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.subheader("Top 15 Empresas por ROE")
-            roe_ranking = df_filtrado[df_filtrado["ROE"].notna()].nlargest(15, "ROE")[["Ticker", "SETOR_ATIV", "ROE"]]
-            
-            if not roe_ranking.empty:
-                fig_roe_rank = px.bar(roe_ranking, x="Ticker", y="ROE", color="SETOR_ATIV",
-                                    title="Ranking de ROE (Return on Equity)")
-                st.plotly_chart(fig_roe_rank, use_container_width=True)
-            else:
-                st.warning("Não há dados de ROE disponíveis para ranking")
-        
-        with col2:
-            st.subheader("Top 15 Empresas por ROA")
-            roa_ranking = df_filtrado[df_filtrado["ROA"].notna()].nlargest(15, "ROA")[["Ticker", "SETOR_ATIV", "ROA"]]
-            
-            if not roa_ranking.empty:
-                fig_roa_rank = px.bar(roa_ranking, x="Ticker", y="ROA", color="SETOR_ATIV",
-                                    title="Ranking de ROA (Return on Assets)")
-                st.plotly_chart(fig_roa_rank, use_container_width=True)
-            else:
-                st.warning("Não há dados de ROA disponíveis para ranking")
-        
-        # Tabela consolidada de rentabilidade
-        st.subheader("📋 Tabela de Rentabilidade - Top 20")
-        rentabilidade_consolidado = df_filtrado[
-            df_filtrado["ROE"].notna() & 
-            df_filtrado["ROA"].notna() & 
-            df_filtrado["ROI"].notna()
-        ].nlargest(20, "ROE")[["Ticker", "SETOR_ATIV", "ROE", "ROA", "ROI", "Margem Líquida"]]
-        
-        if not rentabilidade_consolidado.empty:
-            # Formatar para porcentagem
-            format_dict = {
-                'ROE': '{:.2%}',
-                'ROA': '{:.2%}', 
-                'ROI': '{:.2%}',
-                'Margem Líquida': '{:.2%}'
-            }
-            st.dataframe(
-                rentabilidade_consolidado.style.format(format_dict),
-                use_container_width=True
-            )
-        else:
-            st.warning("Não há dados suficientes para exibir a tabela consolidada")
-    
-    with rank_tab2:
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.subheader("Top 15 Empresas por Lucro Líquido")
-            lucro_ranking = df_filtrado.nlargest(15, "Lucro/Prejuízo Consolidado do Período")[["Ticker", "SETOR_ATIV", "Lucro/Prejuízo Consolidado do Período"]]
-            
-            if not lucro_ranking.empty:
-                # Converter para milhões
-                lucro_ranking["Lucro (R$ Mi)"] = lucro_ranking["Lucro/Prejuízo Consolidado do Período"] / 1e6
-                fig_lucro_rank = px.bar(lucro_ranking, x="Ticker", y="Lucro (R$ Mi)", color="SETOR_ATIV",
-                                      title="Ranking por Lucro Líquido")
-                st.plotly_chart(fig_lucro_rank, use_container_width=True)
-            else:
-                st.warning("Não há dados de lucro disponíveis para ranking")
-        
-        with col2:
-            st.subheader("Top 15 Empresas por Receita")
-            receita_ranking = df_filtrado.nlargest(15, "Receita de Venda de Bens e/ou Serviços")[["Ticker", "SETOR_ATIV", "Receita de Venda de Bens e/ou Serviços"]]
-            
-            if not receita_ranking.empty:
-                # Converter para bilhões
-                receita_ranking["Receita (R$ Bi)"] = receita_ranking["Receita de Venda de Bens e/ou Serviços"] / 1e9
-                fig_receita_rank = px.bar(receita_ranking, x="Ticker", y="Receita (R$ Bi)", color="SETOR_ATIV",
-                                        title="Ranking por Receita")
-                st.plotly_chart(fig_receita_rank, use_container_width=True)
-            else:
-                st.warning("Não há dados de receita disponíveis para ranking")
-    
-    with rank_tab3:
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.subheader("Top 15 Empresas por Patrimônio Líquido")
-            pl_ranking = df_filtrado.nlargest(15, "Patrimônio Líquido Consolidado")[["Ticker", "SETOR_ATIV", "Patrimônio Líquido Consolidado"]]
-            
-            if not pl_ranking.empty:
-                # Converter para bilhões
-                pl_ranking["PL (R$ Bi)"] = pl_ranking["Patrimônio Líquido Consolidado"] / 1e9
-                fig_pl_rank = px.bar(pl_ranking, x="Ticker", y="PL (R$ Bi)", color="SETOR_ATIV",
-                                   title="Ranking de Patrimônio Líquido")
-                st.plotly_chart(fig_pl_rank, use_container_width=True)
-            else:
-                st.warning("Não há dados de patrimônio líquido disponíveis para ranking")
-        
-        with col2:
-            st.subheader("Top 15 Empresas por ROI")
-            roi_ranking = df_filtrado[df_filtrado["ROI"].notna()].nlargest(15, "ROI")[["Ticker", "SETOR_ATIV", "ROI"]]
-            
-            if not roi_ranking.empty:
-                fig_roi_rank = px.bar(roi_ranking, x="Ticker", y="ROI", color="SETOR_ATIV",
-                                    title="Ranking de ROI (Return on Investment)")
-                st.plotly_chart(fig_roi_rank, use_container_width=True)
-            else:
-                st.warning("Não há dados de ROI disponíveis para ranking")
-    
-    with rank_tab4:
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.subheader("Top 15 Empresas por Margem Líquida")
-            margem_ranking = df_filtrado[df_filtrado["Margem Líquida"].notna()].nlargest(15, "Margem Líquida")[["Ticker", "SETOR_ATIV", "Margem Líquida"]]
-            
-            if not margem_ranking.empty:
-                fig_margem_rank = px.bar(margem_ranking, x="Ticker", y="Margem Líquida", color="SETOR_ATIV",
-                                       title="Ranking por Margem Líquida")
-                st.plotly_chart(fig_margem_rank, use_container_width=True)
-            else:
-                st.warning("Não há dados de margem líquida disponíveis para ranking")
-        
-        with col2:
-            st.subheader("Empresas com Melhor WACC")
-            wacc_ranking = df_filtrado[df_filtrado["wacc"].notna()].nsmallest(15, "wacc")[["Ticker", "SETOR_ATIV", "wacc"]]
-            
-            if not wacc_ranking.empty:
-                fig_wacc_rank = px.bar(wacc_ranking, x="Ticker", y="wacc", color="SETOR_ATIV",
-                                     title="Ranking por WACC (menor é melhor)")
-                st.plotly_chart(fig_wacc_rank, use_container_width=True)
-            else:
-                st.warning("Não há dados de WACC disponíveis para ranking")
-
-# ==============================
-# TELAS SECUNDÁRIAS (mantidas como antes)
-# ==============================
-elif modo_analise == "📈 Visão por Empresa":
-    st.header(f"📊 Análise Detalhada - {ticker_selecionado} ({ano_selecionado})")
-    
-    # ... (código mantido igual para visão por empresa)
-
-elif modo_analise == "🏭 Análise Setorial":
-    st.header(f"🏭 Análise Setorial - {setor_selecionado} ({ano_selecionado})")
-    
-    # ... (código mantido igual para análise setorial)
-
-# ==============================
-# SEÇÃO DE FÓRMULAS DOS INDICADORES
-# ==============================
-st.divider()
-st.header("📚 Fórmulas dos Indicadores")
-
-formulas = {
-    "ROE (Return on Equity)": "Lucro Líquido ÷ Patrimônio Líquido Médio",
-    "ROA (Return on Assets)": "Lucro Líquido ÷ Ativo Total Médio", 
-    "ROI (Return on Investment)": "Lucro Líquido ÷ Investimento Médio",
-    "Investimento Médio": "Empréstimos (Circulante + Não Circulante) + Patrimônio Líquido",
-    "Margem Bruta": "Resultado Bruto ÷ Receita de Vendas",
-    "Margem Operacional": "Resultado Antes do Resultado Financeiro e Tributos ÷ Receita de Vendas",
-    "Margem Líquida": "Lucro Líquido ÷ Receita de Vendas",
-    "ki (Custo da Dívida)": "Despesas Financeiras ÷ Passivo Oneroso Médio",
-    "ke (Custo do Capital Próprio)": "Dividendos Pagos ÷ Patrimônio Líquido Médio",
-    "WACC": "(ki × % Capital Terceiros) + (ke × % Capital Próprio)",
-    "Lucro Econômico 1": "(ROI - WACC) × Investimento Médio",
-    "Lucro Econômico 2": "Lucro Líquido - Despesas Financeiras - Dividendos",
-    "EBITDA": "Resultado Antes do Resultado Financeiro e Tributos + Despesas Financeiras",
-    "ROI EBITDA": "EBITDA ÷ Investimento Médio",
-    "Percentual Capital Terceiros": "(Passivo Circulante + Não Circulante) ÷ Passivo Total",
-    "Percentual Capital Próprio": "Patrimônio Líquido ÷ Passivo Total"
+# Arquivos CVM com os dados
+ARQUIVOS_CVM = {
+    'BP': '/content/BP_20250929_204332.xlsx',
+    'DRE': '/content/DRE_20250929_205456.xlsx',
+    'DFC': '/content/DFC_20250929_205808.xlsx'
 }
 
-# Exibir fórmulas em colunas
-col1, col2 = st.columns(2)
+# Carregar o template
+print("📥 Carregando template...")
+df_template = pd.read_excel(TEMPLATE_PATH)
+print(f"✅ Template carregado: {len(df_template)} linhas")
 
-with col1:
-    for i, (indicador, formula) in enumerate(formulas.items()):
-        if i < len(formulas) // 2:
-            with st.expander(f"**{indicador}**"):
-                st.write(f"`{formula}`")
+# Definir os anos de interesse - DE 2009 ATÉ 2024
+anos = list(range(2009, 2025))  # 2009 a 2024 inclusive
 
-with col2:
-    for i, (indicador, formula) in enumerate(formulas.items()):
-        if i >= len(formulas) // 2:
-            with st.expander(f"**{indicador}**"):
-                st.write(f"`{formula}`")
+# Mapeamento das contas que queremos buscar
+CONTAS_BUSCAR = {
+    # BP - Balanço Patrimonial
+    'Ativo Total': {'demonstracao': 'BP', 'cd_conta': '1', 'ds_conta': 'Ativo Total'},
+    'Ativo Circulante': {'demonstracao': 'BP', 'cd_conta': '1.01', 'ds_conta': 'Ativo Circulante'},
+    'Passivo Total': {'demonstracao': 'BP', 'cd_conta': '2', 'ds_conta': 'Passivo Total'},
+    'Passivo Circulante': {'demonstracao': 'BP', 'cd_conta': '2.01', 'ds_conta': 'Passivo Circulante'},
+    'Empréstimos e Financiamentos - Circulante': {'demonstracao': 'BP', 'cd_conta': '2.01.01', 'ds_conta': 'Empréstimos e Financiamentos'},
+    'Passivo Não Circulante': {'demonstracao': 'BP', 'cd_conta': '2.02', 'ds_conta': 'Passivo Não Circulante'},
+    'Empréstimos e Financiamentos - Não Circulante': {'demonstracao': 'BP', 'cd_conta': '2.02.01', 'ds_conta': 'Empréstimos e Financiamentos'},
+    'Patrimônio Líquido Consolidado': {'demonstracao': 'BP', 'cd_conta': '2.03', 'ds_conta': 'Patrimônio Líquido Consolidado'},
 
-# ==============================
-# INFORMAÇÕES GERAIS
-# ==============================
-st.sidebar.divider()
-st.sidebar.header("ℹ️ Informações")
-st.sidebar.info(
-    "Este dashboard apresenta os principais indicadores financeiros "
-    "calculados conforme metodologia da aba 'Indicadores' do Excel original. "
-    "Os dados são provenientes das demonstrações financeiras consolidadas."
-)
+    # DRE - Demonstração do Resultado
+    'Receita de Venda de Bens e/ou Serviços': {'demonstracao': 'DRE', 'cd_conta': '3.01', 'ds_conta': 'Receita de Venda de Bens e/ou Serviços'},
+    'Custo dos Bens e/ou Serviços Vendidos': {'demonstracao': 'DRE', 'cd_conta': '3.02', 'ds_conta': 'Custo dos Bens e/ou Serviços Vendidos'},
+    'Resultado Bruto': {'demonstracao': 'DRE', 'cd_conta': '3.03', 'ds_conta': 'Resultado Bruto'},
+    'Resultado Antes do Resultado Financeiro e dos Tributos': {'demonstracao': 'DRE', 'cd_conta': '3.04', 'ds_conta': 'Resultado Antes do Resultado Financeiro e dos Tributos'},
+    'Resultado Financeiro': {'demonstracao': 'DRE', 'cd_conta': '3.05', 'ds_conta': 'Resultado Financeiro'},
+    'Receitas Financeiras': {'demonstracao': 'DRE', 'cd_conta': '3.05.01', 'ds_conta': 'Receitas Financeiras'},
+    'Despesas Financeiras': {'demonstracao': 'DRE', 'cd_conta': '3.05.02', 'ds_conta': 'Despesas Financeiras'},
+    'Resultado Antes dos Tributos sobre o Lucro': {'demonstracao': 'DRE', 'cd_conta': '3.06', 'ds_conta': 'Resultado Antes dos Tributos sobre o Lucro'},
+    'Lucro/Prejuízo Consolidado do Período': {'demonstracao': 'DRE', 'cd_conta': '3.07', 'ds_conta': 'Lucro/Prejuízo Consolidado do Período'},
 
-# Rodapé
-st.divider()
-st.caption(f"📊 Dashboard CVM - Indicadores Financeiros | Dados atualizados para {ano_selecionado} | Total de empresas na base: {df['Ticker'].nunique()}")
+    # DFC - Demonstração do Fluxo de Caixa
+    'Caixa Líquido Atividades Operacionais': {'demonstracao': 'DFC', 'cd_conta': '6.01', 'ds_conta': 'Caixa Líquido Atividades Operacionais'}
+}
 
-# Adicionar informações sobre os cálculos
-with st.sidebar.expander("💡 Sobre os Cálculos"):
-    st.write("""
-    **Metodologia:**
-    - Todos os indicadores seguem as fórmulas da aba 'Indicadores' do Excel
-    - Valores médios calculados entre período atual e anterior
-    - Dados em R$ mil, conforme padrão CVM
-    - Tratamento de valores missing e divisão por zero
-    """)
+# Carregar dados dos arquivos CVM
+print("📂 Carregando arquivos CVM...")
+dados_cvm = {}
+
+for demonstracao, arquivo in ARQUIVOS_CVM.items():
+    dados_cvm[demonstracao] = {}
+    
+    for ano in anos:
+        # Para 2009, buscar na aba de 2010 (que contém dados de 2009 e 2010)
+        if ano == 2009:
+            aba_para_buscar = 2010
+        else:
+            aba_para_buscar = ano
+            
+        aba_nome = f"{demonstracao}_{aba_para_buscar}"
+        
+        try:
+            df = pd.read_excel(arquivo, sheet_name=aba_nome)
+            # Garantir que CD_CVM seja string para comparação
+            df['CD_CVM'] = df['CD_CVM'].astype(str)
+            
+            # Se estamos buscando 2009 na aba de 2010, filtrar apenas os registros de 2009
+            if ano == 2009:
+                df = df[df['ANO'] == 2009]
+            
+            dados_cvm[demonstracao][ano] = df
+            print(f"✅ {aba_nome} (para ano {ano}) carregado - {len(df)} linhas")
+            print(f"   Empresas únicas: {df['CD_CVM'].nunique()}")
+            
+        except Exception as e:
+            print(f"❌ Erro ao carregar {aba_nome} (para ano {ano}): {e}")
+            dados_cvm[demonstracao][ano] = None
+
+# Função para buscar valor de uma conta específica
+def buscar_valor_conta(cd_cvm, conta_info, ano):
+    """
+    Busca o valor de uma conta específica para um CD_CVM e ano
+    """
+    demonstracao = conta_info['demonstracao']
+    cd_conta = conta_info['cd_conta']
+    ds_conta = conta_info['ds_conta']
+    
+    if dados_cvm.get(demonstracao, {}).get(ano) is None:
+        return None
+    
+    df = dados_cvm[demonstracao][ano]
+    
+    # Buscar pelo CD_CVM e CD_CONTA
+    resultado = df[(df['CD_CVM'] == cd_cvm) & (df['CD_CONTA'] == cd_conta)]
+    
+    if resultado.empty:
+        # Tentar buscar pela descrição da conta
+        resultado = df[(df['CD_CVM'] == cd_cvm) & 
+                      (df['DS_CONTA'].str.contains(ds_conta, na=False))]
+    
+    if not resultado.empty:
+        valor = resultado['VL_CONTA'].iloc[0]
+        return valor
+    
+    return None
+
+# Função para calcular ROE com validação
+def calcular_roe_se_aplicavel(lucro_liquido, patrimonio_liquido):
+    """
+    Calcula ROE apenas se:
+    - Lucro Líquido > 0 E Patrimônio Líquido > 0
+    Caso contrário, retorna NaN
+    """
+    if pd.isna(lucro_liquido) or pd.isna(patrimonio_liquido):
+        return np.nan
+    
+    # Condição: Lucro Líquido > 0 E Patrimônio Líquido > 0
+    if lucro_liquido > 0 and patrimonio_liquido > 0:
+        return lucro_liquido / patrimonio_liquido
+    else:
+        return np.nan
+
+# Processar o template
+print("\n🚀 INICIANDO BUSCA DE DADOS CONTÁBEIS...")
+print("=" * 60)
+
+# Criar cópia do template para preencher
+df_resultado = df_template.copy()
+
+# Garantir que CD_CVM no template seja string
+df_resultado['CD_CVM'] = df_resultado['CD_CVM'].astype(str)
+
+# Contadores para estatísticas
+total_linhas = len(df_resultado)
+linhas_processadas = 0
+empresas_com_dados = 0
+
+# Agrupar por empresa e ano para evitar processamento duplicado
+empresas_unicas = df_resultado[['CD_CVM', 'DENOM_CIA', 'Ano']].drop_duplicates()
+empresas_unicas['CD_CVM'] = empresas_unicas['CD_CVM'].astype(str)
+
+print(f"📊 Total de empresas/anos únicos para processar: {len(empresas_unicas)}")
+print(f"📅 Período coberto: {min(anos)} a {max(anos)}")
+print(f"💡 Nota: Dados de 2009 serão buscados nas abas de 2010")
+
+# Para cada empresa/ano único no template
+for idx, empresa in empresas_unicas.iterrows():
+    cd_cvm = empresa['CD_CVM']
+    denom_cia = empresa['DENOM_CIA']
+    ano = empresa['Ano']
+    
+    # Pular se o ano não estiver no nosso range de interesse
+    if ano not in anos:
+        continue
+        
+    print(f"🔍 Processando: {denom_cia} ({cd_cvm}) - {ano}")
+    
+    # Buscar dados para cada conta
+    dados_empresa = {}
+    for conta_nome, conta_info in CONTAS_BUSCAR.items():
+        valor = buscar_valor_conta(cd_cvm, conta_info, ano)
+        dados_empresa[conta_nome] = valor
+        
+        if valor is not None:
+            print(f"   ✅ {conta_nome}: {valor:,.0f}")
+        # else:
+        #     print(f"   ❌ {conta_nome}: Não encontrado")
+    
+    # Verificar se encontrou algum dado
+    if any(valor is not None for valor in dados_empresa.values()):
+        empresas_com_dados += 1
+        
+        # Atualizar todas as linhas com este CD_CVM e Ano
+        mask = (df_resultado['CD_CVM'] == cd_cvm) & (df_resultado['Ano'] == ano)
+        linhas_afetadas = mask.sum()
+        linhas_processadas += linhas_afetadas
+        
+        for conta_nome, valor in dados_empresa.items():
+            df_resultado.loc[mask, conta_nome] = valor
+        
+        print(f"   📈 Dados aplicados a {linhas_afetadas} linha(s)")
+    else:
+        print(f"   ⚠️  Nenhum dado encontrado")
+    
+    print("-" * 40)
+
+# 🔧 CALCULAR ROE COM VALIDAÇÃO APÓS PREENCHER TODOS OS DADOS
+print("\n📊 Calculando ROE com validação...")
+
+# Verificar se as colunas necessárias existem
+if 'Lucro/Prejuízo Consolidado do Período' in df_resultado.columns and 'Patrimônio Líquido Consolidado' in df_resultado.columns:
+    
+    # Aplicar a função de cálculo de ROE com validação
+    df_resultado['ROE'] = df_resultado.apply(
+        lambda row: calcular_roe_se_aplicavel(
+            row['Lucro/Prejuízo Consolidado do Período'], 
+            row['Patrimônio Líquido Consolidado']
+        ), 
+        axis=1
+    )
+    
+    # Contar quantos ROEs foram calculados
+    roe_calculados = df_resultado['ROE'].notna().sum()
+    roe_nao_calculados = len(df_resultado) - roe_calculados
+    
+    print(f"✅ ROE calculado para {roe_calculados} linhas")
+    print(f"📊 ROE não calculado (devido a LL ≤ 0 ou PL ≤ 0): {roe_nao_calculados} linhas")
+    
+    # Mostrar exemplos de casos onde ROE não foi calculado
+    casos_nao_calculados = df_resultado[
+        (df_resultado['Lucro/Prejuízo Consolidado do Período'].notna()) & 
+        (df_resultado['Patrimônio Líquido Consolidado'].notna()) & 
+        (df_resultado['ROE'].isna())
+    ].head(5)
+    
+    if len(casos_nao_calculados) > 0:
+        print(f"\n🔍 EXEMPLOS DE CASOS ONDE ROE NÃO FOI CALCULADO:")
+        for _, caso in casos_nao_calculados.iterrows():
+            ll = caso['Lucro/Prejuízo Consolidado do Período']
+            pl = caso['Patrimônio Líquido Consolidado']
+            print(f"   • {caso['DENOM_CIA']} ({caso['Ano']}): LL = {ll:,.0f}, PL = {pl:,.0f}")
+else:
+    print("⚠️  Colunas necessárias para cálculo do ROE não encontradas")
+
+# Salvar resultados
+print("\n💾 Salvando resultados...")
+df_resultado.to_excel(OUTPUT_PATH, index=False)
+
+# Estatísticas finais
+print("\n🎯 PROCESSAMENTO CONCLUÍDO!")
+print("=" * 60)
+print(f"📊 ESTATÍSTICAS:")
+print(f"   • Período analisado: {min(anos)} a {max(anos)}")
+print(f"   • Total de anos: {len(anos)}")
+print(f"   • Total de linhas no template: {total_linhas}")
+print(f"   • Linhas processadas: {linhas_processadas}")
+print(f"   • Empresas/anos com dados encontrados: {empresas_com_dados}")
+print(f"   • Taxa de sucesso: {(empresas_com_dados/len(empresas_unicas))*100:.1f}%")
+
+# Verificar preenchimento das contas
+print(f"\n📈 DADOS OBTIDOS POR CONTA:")
+for conta_nome in CONTAS_BUSCAR.keys():
+    preenchidas = df_resultado[conta_nome].notna().sum()
+    total = len(df_resultado)
+    percentual = (preenchidas / total) * 100
+    print(f"   • {conta_nome}: {preenchidas}/{total} ({percentual:.1f}%)")
+
+# Mostrar também o ROE se foi calculado
+if 'ROE' in df_resultado.columns:
+    preenchidas_roe = df_resultado['ROE'].notna().sum()
+    total_roe = len(df_resultado)
+    percentual_roe = (preenchidas_roe / total_roe) * 100
+    print(f"   • ROE (válido): {preenchidas_roe}/{total_roe} ({percentual_roe:.1f}%)")
+
+print(f"\n💾 ARQUIVO SALVO: {OUTPUT_PATH}")
+print(f"📅 HORÁRIO: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+# Mostrar amostra dos resultados
+print(f"\n🔍 AMOSTRA DOS RESULTADOS:")
+colunas_amostra = ['CD_CVM', 'DENOM_CIA', 'Ticker', 'Ano', 'Ativo Total', 
+                   'Lucro/Prejuízo Consolidado do Período', 'Patrimônio Líquido Consolidado']
+if 'ROE' in df_resultado.columns:
+    colunas_amostra.append('ROE')
+amostra = df_resultado[colunas_amostra].head(10)
+
+# Formatando os valores para melhor visualização
+for col in amostra.columns:
+    if col in ['Ativo Total', 'Lucro/Prejuízo Consolidado do Período', 'Patrimônio Líquido Consolidado']:
+        amostra[col] = amostra[col].apply(lambda x: f"{x:,.0f}" if pd.notna(x) and isinstance(x, (int, float)) else x)
+    elif col == 'ROE':
+        amostra[col] = amostra[col].apply(lambda x: f"{x:.4f}" if pd.notna(x) and isinstance(x, (int, float)) else "N/A")
+
+print(amostra)
+
+# Mostrar distribuição por ano
+print(f"\n📅 DISTRIBUIÇÃO DE DADOS POR ANO:")
+for ano in sorted(df_resultado['Ano'].unique()):
+    if ano in anos:  # Apenas anos que tentamos buscar
+        linhas_ano = len(df_resultado[df_resultado['Ano'] == ano])
+        dados_preenchidos = df_resultado[df_resultado['Ano'] == ano]['Ativo Total'].notna().sum()
+        percentual = (dados_preenchidos/linhas_ano*100) if linhas_ano > 0 else 0
+        fonte = " (busca em 2010)" if ano == 2009 else ""
+        
+        # Adicionar info sobre ROE válido por ano
+        if 'ROE' in df_resultado.columns:
+            roe_valido_ano = df_resultado[(df_resultado['Ano'] == ano) & (df_resultado['ROE'].notna())].shape[0]
+            print(f"   • {ano}: {dados_preenchidos}/{linhas_ano} empresas com dados ({percentual:.1f}%) - {roe_valido_ano} ROEs válidos{fonte}")
+        else:
+            print(f"   • {ano}: {dados_preenchidos}/{linhas_ano} empresas com dados ({percentual:.1f}%){fonte}")
+
+# Mostrar algumas empresas que foram processadas com sucesso
+print(f"\n🏢 EMPRESAS COM DADOS ENCONTRADOS:")
+empresas_com_dados_df = df_resultado[df_resultado['Ativo Total'].notna()][['CD_CVM', 'DENOM_CIA', 'Ano']].drop_duplicates()
+print(empresas_com_dados_df.head(10))
