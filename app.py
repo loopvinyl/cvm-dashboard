@@ -20,10 +20,36 @@ def load_data():
     df.columns = [c.strip() for c in df.columns]
     
     # =============================================
-    # MAPEAMENTO DAS CONTAS BASEADO NO EXCEL CPFE3
+    # MAPEAMENTO EXATO DAS CONTAS
     # =============================================
     
-    # 1. CÁLCULOS DE MÉDIAS (conforme aba "Indicadores" do Excel)
+    # CONTA NO EXCEL MODELO → COLUNA NO data_frame
+    # 
+    # BALANÇO PATRIMONIAL (BP):
+    # "Ativo Total" → "Ativo Total"
+    # "Passivo Total" → "Passivo Total" 
+    # "Passivo Circulante" → "Passivo Circulante"
+    # "Empréstimos e Financiamentos" (Circulante) → "Empréstimos e Financiamentos - Circulante"
+    # "Passivo Não Circulante" → "Passivo Não Circulante"
+    # "Empréstimos e Financiamentos" (Não Circulante) → "Empréstimos e Financiamentos - Não Circulante"
+    # "Patrimônio Líquido Consolidado" → "Patrimônio Líquido Consolidado"
+    #
+    # DEMONSTRAÇÃO DO RESULTADO (DRE):
+    # "Receita de Venda de Bens e/ou Serviços" → "Receita de Venda de Bens e/ou Serviços"
+    # "Custo dos Bens e/ou Serviços Vendidos" → "Custo dos Bens e/ou Serviços Vendidos"
+    # "Resultado Bruto" → "Resultado Bruto"
+    # "Resultado Antes do Resultado Financeiro e dos Tributos" → "Resultado Antes do Resultado Financeiro e dos Tributos"
+    # "Resultado Financeiro" → "Resultado Financeiro"
+    # "Receitas Financeiras" → "Receitas Financeiras"
+    # "Despesas Financeiras" → "Despesas Financeiras"
+    # "Lucro/Prejuízo Consolidado do Período" → "Lucro/Prejuízo Consolidado do Período"
+    #
+    # DEMONSTRAÇÃO DO FLUXO DE CAIXA (DFC):
+    # "Dividendo e juros sobre o capital próprio pagos" → "Pagamento de Dividendos"
+    
+    # =============================================
+    # CÁLCULOS DE MÉDIAS 
+    # =============================================
     
     # Ativo Médio = (Ativo Total atual + Ativo Total anterior) / 2
     df["Ativo Médio"] = (df["Ativo Total"] + df.groupby("Ticker")["Ativo Total"].shift(1)) / 2
@@ -50,7 +76,7 @@ def load_data():
     )
     
     # =============================================
-    # INDICADORES DE RENTABILIDADE (conforme Excel)
+    # INDICADORES DE RENTABILIDADE
     # =============================================
     
     # ROA = Resultado Antes do Resultado Financeiro e dos Tributos / Ativo Médio
@@ -75,7 +101,7 @@ def load_data():
     )
     
     # =============================================
-    # MARGENS (conforme aba DRE do Excel)
+    # MARGENS
     # =============================================
     
     # Margem Bruta = Resultado Bruto / Receita
@@ -100,7 +126,7 @@ def load_data():
     )
     
     # =============================================
-    # ESTRUTURA DE CAPITAL (conforme aba BP do Excel)
+    # ESTRUTURA DE CAPITAL
     # =============================================
     
     # Total do Passivo = Passivo Circulante + Passivo Não Circulante + Patrimônio Líquido
@@ -125,7 +151,7 @@ def load_data():
     )
     
     # =============================================
-    # CUSTO DE CAPITAL (conforme aba "Indicadores" do Excel)
+    # CUSTO DE CAPITAL
     # =============================================
     
     # ki (Custo da Dívida) = Despesas Financeiras / Passivo Oneroso Médio
@@ -136,7 +162,6 @@ def load_data():
     )
     
     # ke (Custo do Capital Próprio) = Dividendos Pagos / PL Médio
-    # NOTA: No Excel, usa "Dividendo e juros sobre o capital próprio pagos" da aba DFC
     df["ke"] = np.where(
         (df["PL Médio"] > 0) & (df["Pagamento de Dividendos"].notna()),
         df["Pagamento de Dividendos"].abs() / df["PL Médio"],
@@ -152,7 +177,7 @@ def load_data():
     )
     
     # =============================================
-    # EBITDA E LUCRO ECONÔMICO (conforme Excel)
+    # EBITDA E LUCRO ECONÔMICO
     # =============================================
     
     # EBITDA = Resultado Operacional + Despesas Financeiras
@@ -194,10 +219,10 @@ def load_data():
     )
     
     # =============================================
-    # ANÁLISE DE ALAVANCAGEM (conforme Excel)
+    # ANÁLISE DE ALAVANCAGEM
     # =============================================
     
-    # Verifica se a alavancagem é eficaz
+    # Verifica se a alavancagem é eficaz (ROE > ROA e ROE > ROI)
     df["Alavancagem Eficaz"] = np.where(
         (df["ROE"].notna()) & (df["ROA"].notna()) & (df["ROI"].notna()),
         (df["ROE"] > df["ROA"]) & (df["ROE"] > df["ROI"]),
@@ -206,6 +231,7 @@ def load_data():
     
     return df
 
+# O restante do código permanece igual...
 df = load_data()
 
 # ==============================
@@ -740,23 +766,27 @@ st.caption(f"📊 Dashboard CVM - Indicadores Financeiros | Dados atualizados pa
 # Adicionar informações sobre os cálculos
 with st.sidebar.expander("💡 Metodologia CPFE3"):
     st.write("""
-    **Baseado na planilha modelo CPFE3:**
+    **Mapeamento Exato das Contas:**
     
-    **Fontes dos Dados:**
-    - BP (Balanço Patrimonial): Ativo Total, Passivos, Patrimônio Líquido
-    - DRE (Demonstração Resultado): Receita, Resultados, Despesas Financeiras  
-    - DFC (Fluxo de Caixa): Dividendos Pagos
-    - Qtde.Ações: Quantidade de ações
+    **BP → data_frame:**
+    - Ativo Total → Ativo Total
+    - Passivo Circulante → Passivo Circulante  
+    - Empréstimos (Circulante) → Empréstimos e Financiamentos - Circulante
+    - Passivo Não Circulante → Passivo Não Circulante
+    - Empréstimos (Não Circulante) → Empréstimos e Financiamentos - Não Circulante
+    - Patrimônio Líquido → Patrimônio Líquido Consolidado
     
-    **Cálculos Principais:**
-    - ROA: Resultado Operacional ÷ Ativo Médio
-    - ROI: Resultado Operacional ÷ Investimento Médio
-    - ROE: Lucro Líquido ÷ PL Médio
-    - WACC: (ki × % Capital Terceiros) + (ke × % Capital Próprio)
+    **DRE → data_frame:**
+    - Receita → Receita de Venda de Bens e/ou Serviços
+    - Resultado Operacional → Resultado Antes do Resultado Financeiro e dos Tributos
+    - Lucro Líquido → Lucro/Prejuízo Consolidado do Período
+    - Despesas Financeiras → Despesas Financeiras
     
-    **Valores de Referência CPFE3:**
-    - ROA: 14.24%
-    - ROI: 22.33% 
-    - ROE: 27.57%
-    - WACC: 16.13%
+    **DFC → data_frame:**
+    - Dividendos → Pagamento de Dividendos
+    
+    **Fórmulas Validadas com CPFE3:**
+    - ROA: 10.830.228 ÷ 76.050.210,50 = 14,24%
+    - ROI: 10.830.228 ÷ 48.509.611,50 = 22,33%
+    - ROE: 5.761.554 ÷ 20.896.891,00 = 27,57%
     """)
