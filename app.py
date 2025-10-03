@@ -139,7 +139,7 @@ def load_data():
         np.nan
     )
     
-    df["Lucro Econômico EBITDA"] = np.where(
+    df["Lucro Econômico com EBITDA"] = np.where(
         (df["ROI EBITDA"].notna()) & (df["wacc"].notna()) & (df["Investimento Médio"].notna()),
         (df["ROI EBITDA"] - df["wacc"]) * df["Investimento Médio"],
         np.nan
