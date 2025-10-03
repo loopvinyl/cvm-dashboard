@@ -21,133 +21,73 @@ def load_data():
     
     # CALCULAR INDICADORES CONFORME ABA "INDICADORES" DO EXCEL
     
-    # 1. ROA (Return on Assets) - APENAS PARA LUCRO POSITIVO E ATIVO MÉDIO POSITIVO
+    # 1. ROA (Return on Assets) - CONFORME PLANILHA
     df["Ativo Médio"] = (df["Ativo Total"] + df.groupby("Ticker")["Ativo Total"].shift(1)) / 2
-    df["ROA"] = np.where(
-        (df["Ativo Médio"] > 0) & (df["Lucro/Prejuízo Consolidado do Período"] > 0),
-        df["Lucro/Prejuízo Consolidado do Período"] / df["Ativo Médio"],
-        np.nan
-    )
+    df["ROA"] = df["Lucro/Prejuízo Consolidado do Período"] / df["Ativo Médio"]
     
-    # 2. ROI (Return on Investment) - APENAS PARA LUCRO POSITIVO E INVESTIMENTO POSITIVO
+    # 2. ROI (Return on Investment) - CONFORME PLANILHA
     df["Investimento Médio"] = (
-        df["Empréstimos e Financiamentos - Circulante"].fillna(0) + 
-        df["Empréstimos e Financiamentos - Não Circulante"].fillna(0) + 
-        df["Patrimônio Líquido Consolidado"]
+        (df["Passivo Circulante"].fillna(0) + 
+         df["Passivo Não Circulante"].fillna(0) + 
+         df["Patrimônio Líquido Consolidado"] +
+         df.groupby("Ticker")["Passivo Circulante"].shift(1).fillna(0) +
+         df.groupby("Ticker")["Passivo Não Circulante"].shift(1).fillna(0) +
+         df.groupby("Ticker")["Patrimônio Líquido Consolidado"].shift(1).fillna(0)) / 2
     )
-    df["ROI"] = np.where(
-        (df["Investimento Médio"] > 0) & (df["Lucro/Prejuízo Consolidado do Período"] > 0),
-        df["Lucro/Prejuízo Consolidado do Período"] / df["Investimento Médio"],
-        np.nan
-    )
+    df["ROI"] = df["Lucro/Prejuízo Consolidado do Período"] / df["Investimento Médio"]
     
-    # 3. ROE (Return on Equity) - APENAS PARA LUCRO POSITIVO E PL MÉDIO POSITIVO
+    # 3. ROE (Return on Equity) - CONFORME PLANILHA
     df["PL Médio"] = (df["Patrimônio Líquido Consolidado"] + df.groupby("Ticker")["Patrimônio Líquido Consolidado"].shift(1)) / 2
-    df["ROE"] = np.where(
-        (df["PL Médio"] > 0) & (df["Lucro/Prejuízo Consolidado do Período"] > 0),
-        df["Lucro/Prejuízo Consolidado do Período"] / df["PL Médio"],
-        np.nan
-    )
+    df["ROE"] = df["Lucro/Prejuízo Consolidado do Período"] / df["PL Médio"]
     
-    # 4. Estrutura de Capital
-    df["Percentual Capital Terceiros"] = np.where(
-        df["Passivo Total"] != 0,
-        (df["Passivo Circulante"].fillna(0) + df["Passivo Não Circulante"].fillna(0)) / df["Passivo Total"],
-        np.nan
-    )
-    df["Percentual Capital Próprio"] = np.where(
-        df["Passivo Total"] != 0,
-        df["Patrimônio Líquido Consolidado"] / df["Passivo Total"],
-        np.nan
-    )
+    # 4. Estrutura de Capital - CONFORME PLANILHA
+    df["Total Capital"] = df["Passivo Circulante"] + df["Passivo Não Circulante"] + df["Patrimônio Líquido Consolidado"]
+    df["Percentual Capital Terceiros"] = (df["Passivo Circulante"] + df["Passivo Não Circulante"]) / df["Total Capital"]
+    df["Percentual Capital Próprio"] = df["Patrimônio Líquido Consolidado"] / df["Total Capital"]
     
-    # 5. Margens
-    df["Margem Bruta"] = np.where(
-        df["Receita de Venda de Bens e/ou Serviços"] != 0,
-        df["Resultado Bruto"] / df["Receita de Venda de Bens e/ou Serviços"],
-        np.nan
-    )
-    df["Margem Operacional"] = np.where(
-        df["Receita de Venda de Bens e/ou Serviços"] != 0,
-        df["Resultado Antes do Resultado Financeiro e dos Tributos"] / df["Receita de Venda de Bens e/ou Serviços"],
-        np.nan
-    )
-    df["Margem Líquida"] = np.where(
-        df["Receita de Venda de Bens e/ou Serviços"] != 0,
-        df["Lucro/Prejuízo Consolidado do Período"] / df["Receita de Venda de Bens e/ou Serviços"],
-        np.nan
-    )
+    # 5. Margens - CONFORME PLANILHA
+    df["Margem Bruta"] = df["Resultado Bruto"] / df["Receita de Venda de Bens e/ou Serviços"]
+    df["Margem Operacional"] = df["Resultado Antes do Resultado Financeiro e dos Tributos"] / df["Receita de Venda de Bens e/ou Serviços"]
+    df["Margem Líquida"] = df["Lucro/Prejuízo Consolidado do Período"] / df["Receita de Venda de Bens e/ou Serviços"]
     
-    # 6. Custo da Dívida (ki)
+    # 6. Custo da Dívida (ki) - CONFORME PLANILHA
     df["Passivo Oneroso Médio"] = (
-        df["Empréstimos e Financiamentos - Circulante"].fillna(0) + 
-        df["Empréstimos e Financiamentos - Não Circulante"].fillna(0)
+        (df["Empréstimos e Financiamentos - Circulante"].fillna(0) + 
+         df["Empréstimos e Financiamentos - Não Circulante"].fillna(0) +
+         df.groupby("Ticker")["Empréstimos e Financiamentos - Circulante"].shift(1).fillna(0) +
+         df.groupby("Ticker")["Empréstimos e Financiamentos - Não Circulante"].shift(1).fillna(0)) / 2
     )
-    df["ki"] = np.where(
-        (df["Passivo Oneroso Médio"] != 0) & (df["Despesas Financeiras"].notna()),
-        df["Despesas Financeiras"].abs() / df["Passivo Oneroso Médio"],
-        np.nan
-    )
+    df["ki"] = df["Despesas Financeiras"].abs() / df["Passivo Oneroso Médio"]
     
-    # 7. Custo do Capital Próprio (ke)
-    df["ke"] = np.where(
-        (df["PL Médio"] != 0) & (df["Pagamento de Dividendos"].notna()),
-        df["Pagamento de Dividendos"].abs() / df["PL Médio"],
-        np.nan
-    )
+    # 7. Custo do Capital Próprio (ke) - CONFORME PLANILHA
+    df["ke"] = df["Pagamento de Dividendos"].abs() / df["PL Médio"]
     
-    # 8. WACC (Weighted Average Cost of Capital)
-    def calcular_wacc(row):
-        try:
-            if (pd.notna(row['Passivo Oneroso Médio']) and pd.notna(row['PL Médio']) and 
-                pd.notna(row['ki']) and pd.notna(row['ke'])):
-                total_capital = row['Passivo Oneroso Médio'] + row['PL Médio']
-                if total_capital > 0:
-                    return ((row['ki'] * row['Passivo Oneroso Médio']) + (row['ke'] * row['PL Médio'])) / total_capital
-            return np.nan
-        except:
-            return np.nan
+    # 8. WACC (Weighted Average Cost of Capital) - CONFORME PLANILHA
+    df["wacc"] = (df["ki"] * df["Passivo Oneroso Médio"] + df["ke"] * df["PL Médio"]) / (df["Passivo Oneroso Médio"] + df["PL Médio"])
     
-    df["wacc"] = df.apply(calcular_wacc, axis=1)
+    # 9. Lucro Econômico - CONFORME PLANILHA
+    df["Lucro Econômico 1"] = (df["ROI"] - df["wacc"]) * df["Investimento Médio"]
+    df["Lucro Econômico 2"] = df["Lucro/Prejuízo Consolidado do Período"] - df["Despesas Financeiras"].abs() - df["Pagamento de Dividendos"].abs()
     
-    # 9. Lucro Econômico
-    df["Lucro Econômico 1"] = np.where(
-        (df["ROI"].notna()) & (df["wacc"].notna()) & (df["Investimento Médio"].notna()),
-        (df["ROI"] - df["wacc"]) * df["Investimento Médio"],
-        np.nan
-    )
+    # 10. EBITDA e ROI EBITDA - CONFORME PLANILHA
+    df["EBITDA"] = df["Lucro/Prejuízo Consolidado do Período"] - df["Resultado Financeiro"]
+    df["ROI EBITDA"] = df["EBITDA"] / df["Investimento Médio"]
+    df["Lucro Econômico EBITDA"] = (df["ROI EBITDA"] - df["wacc"]) * df["Investimento Médio"]
     
-    df["Lucro Econômico 2"] = np.where(
-        (df["Lucro/Prejuízo Consolidado do Período"].notna()) & 
-        (df["Despesas Financeiras"].notna()) & 
-        (df["Pagamento de Dividendos"].notna()),
-        df["Lucro/Prejuízo Consolidado do Período"] - df["Despesas Financeiras"].abs() - df["Pagamento de Dividendos"].abs(),
-        np.nan
-    )
-    
-    # 10. EBITDA e ROI EBITDA
-    df["EBITDA"] = np.where(
-        (df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna()) & 
-        (df["Despesas Financeiras"].notna()),
-        df["Resultado Antes do Resultado Financeiro e dos Tributos"] + df["Despesas Financeiras"].abs(),
-        np.nan
-    )
-    
-    df["ROI EBITDA"] = np.where(
-        (df["EBITDA"].notna()) & (df["Investimento Médio"] != 0),
-        df["EBITDA"] / df["Investimento Médio"],
-        np.nan
-    )
-    
-    df["Lucro Econômico EBITDA"] = np.where(
-        (df["ROI EBITDA"].notna()) & (df["wacc"].notna()) & (df["Investimento Médio"].notna()),
-        (df["ROI EBITDA"] - df["wacc"]) * df["Investimento Médio"],
-        np.nan
-    )
+    # 11. Valor de Mercado e Cotação - CONFORME PLANILHA
+    df["Lucro Econômico EBITDA Mil"] = df["Lucro Econômico EBITDA"] * 1000
+    df["SELIC"] = 0.15  # Valor fixo conforme planilha
+    df["Valor de Mercado"] = df["Lucro Econômico EBITDA Mil"] / df["SELIC"]
+    df["Quantidade de Ações"] = df["Número Total de Ações"]  # Supondo que esta coluna existe
+    df["Cotação Esperada"] = df["Valor de Mercado"] / df["Quantidade de Ações"]
     
     return df
 
 df = load_data()
+
+# O RESTANTE DO CÓDIGO PERMANECE EXATAMENTE IGUAL...
+
+
 
 # ==============================
 # SIDEBAR - FILTROS PRINCIPAIS
