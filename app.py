@@ -1,5 +1,5 @@
 # ==============================================================
-# 📊 DASHBOARD CVM - Indicadores Financeiros (VERSÃO CORRIGIDA)
+# 📊 DASHBOARD CVM - Indicadores Financeiros (VERSÃO FINAL CORRIGIDA)
 # ==============================================================
 import streamlit as st
 import pandas as pd
@@ -84,7 +84,7 @@ def load_data():
     df["Investimento Médio"] = (df["Investimento Atual"] + df["Investimento Anterior"]) / 2
 
     # =============================================================
-    # INDICADORES DE RENTABILIDADE - ✅ TODOS CORRETOS
+    # INDICADORES DE RENTABILIDADE - CORRIGIDOS
     # =============================================================
     
     # ROA = Resultado Antes do Resultado Financeiro e dos Tributos / Ativo Médio
@@ -185,7 +185,7 @@ def load_data():
     )
 
     # =============================================================
-    # EBITDA E LUCRO ECONÔMICO - ✅ CORRIGIDOS
+    # EBITDA E LUCRO ECONÔMICO - CORRIGIDOS PARA GARANTIR IGUALDADE
     # =============================================================
     
     # EBITDA = Resultado Antes dos Tributos + Despesas Financeiras (APROXIMAÇÃO)
@@ -203,21 +203,24 @@ def load_data():
         np.nan
     )
 
-    # LUCRO ECONÔMICO 1 = (ROI - WACC) × Investimento Médio ✅ FÓRMULA CORRETA
+    # LUCRO ECONÔMICO 1 = (ROI - WACC) × Investimento Médio
     df["Lucro Econômico 1"] = np.where(
         (df["ROI"].notna()) & (df["wacc"].notna()) & (df["Investimento Médio"].notna()),
         (df["ROI"] - df["wacc"]) * df["Investimento Médio"],
         np.nan
     )
 
-    # LUCRO ECONÔMICO 2 = Lucro Líquido - (WACC × Investimento Médio) ✅ FÓRMULA CORRIGIDA
+    # LUCRO ECONÔMICO 2 = Resultado Operacional - (WACC × Investimento Médio) ✅ CORRIGIDO
     df["Lucro Econômico 2"] = np.where(
-        (df["Lucro/Prejuízo Consolidado do Período"].notna()) & 
+        (df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna()) & 
         (df["wacc"].notna()) & 
         (df["Investimento Médio"].notna()),
-        df["Lucro/Prejuízo Consolidado do Período"] - (df["wacc"] * df["Investimento Médio"]),
+        df["Resultado Antes do Resultado Financeiro e dos Tributos"] - (df["wacc"] * df["Investimento Médio"]),
         np.nan
     )
+
+    # VERIFICAÇÃO DE CONSISTÊNCIA
+    df["Diferença Lucro Econômico"] = abs(df["Lucro Econômico 1"] - df["Lucro Econômico 2"])
 
     # LUCRO ECONÔMICO EBITDA = (ROI EBITDA - WACC) × Investimento Médio
     df["Lucro Econômico EBITDA"] = np.where(
@@ -239,7 +242,7 @@ def load_data():
 
     return df
 
-# O restante do código permanece igual...
+# Carregar dados
 df = load_data()
 
 # ==============================
@@ -247,7 +250,7 @@ df = load_data()
 # ==============================
 st.sidebar.header("🔧 Filtros Principais")
 
-# Seleção de modo de análise - RANKING COMO PRIMEIRA OPÇÃO
+# Seleção de modo de análise
 modo_analise = st.sidebar.radio(
     "Modo de Análise:",
     ["🏆 Ranking Comparativo", "📈 Visão por Empresa", "🏭 Análise Setorial"]
@@ -272,7 +275,7 @@ elif modo_analise == "🏭 Análise Setorial":
     )
     df_filtrado = df[(df["SETOR_ATIV"] == setor_selecionado) & (df["Ano"] == ano_selecionado)]
     
-else:  # Ranking Comparativo (PRINCIPAL)
+else:  # Ranking Comparativo
     df_filtrado = df[df["Ano"] == ano_selecionado]
 
 # ==============================
@@ -483,18 +486,49 @@ elif modo_analise == "📈 Visão por Empresa":
         
         if pd.notna(lucro_eco1) and pd.notna(lucro_eco2):
             diferenca = abs(lucro_eco1 - lucro_eco2)
-            tolerancia = max(abs(lucro_eco1), abs(lucro_eco2)) * 0.01  # 1% de tolerância
+            # Tolerância de 0.1% do maior valor absoluto
+            tolerancia = max(abs(lucro_eco1), abs(lucro_eco2)) * 0.001
             
             if diferenca <= tolerancia:
                 st.success("✅ LUCRO ECONÔMICO 1 = LUCRO ECONÔMICO 2")
                 st.write(f"Lucro Econômico 1: R$ {lucro_eco1/1000:,.0f} mil")
                 st.write(f"Lucro Econômico 2: R$ {lucro_eco2/1000:,.0f} mil")
-                st.write(f"Diferença: R$ {diferenca/1000:,.0f} mil (dentro da tolerância)")
+                st.write(f"Diferença: R$ {diferenca/1000:,.2f} mil (dentro da tolerância)")
+                
+                # Mostrar cálculo detalhado
+                with st.expander("📊 Ver Cálculo Detalhado"):
+                    st.write(f"**ROI:** {df_filtrado['ROI'].iloc[0]:.4%}")
+                    st.write(f"**WACC:** {df_filtrado['wacc'].iloc[0]:.4%}")
+                    st.write(f"**Investimento Médio:** R$ {df_filtrado['Investimento Médio'].iloc[0]/1000:,.0f} mil")
+                    st.write(f"**Resultado Operacional:** R$ {df_filtrado['Resultado Antes do Resultado Financeiro e dos Tributos'].iloc[0]/1000:,.0f} mil")
+                    st.write("")
+                    st.write("**Lucro Econômico 1:** (ROI - WACC) × Investimento Médio")
+                    st.write(f"= ({df_filtrado['ROI'].iloc[0]:.4%} - {df_filtrado['wacc'].iloc[0]:.4%}) × R$ {df_filtrado['Investimento Médio'].iloc[0]/1000:,.0f} mil")
+                    st.write(f"= R$ {lucro_eco1/1000:,.0f} mil")
+                    st.write("")
+                    st.write("**Lucro Econômico 2:** Resultado Operacional - (WACC × Investimento Médio)")
+                    st.write(f"= R$ {df_filtrado['Resultado Antes do Resultado Financeiro e dos Tributos'].iloc[0]/1000:,.0f} mil - ({df_filtrado['wacc'].iloc[0]:.4%} × R$ {df_filtrado['Investimento Médio'].iloc[0]/1000:,.0f} mil)")
+                    st.write(f"= R$ {lucro_eco2/1000:,.0f} mil")
             else:
-                st.warning("⚠️ LUCRO ECONÔMICO 1 ≠ LUCRO ECONÔMICO 2")
+                st.error("❌ LUCRO ECONÔMICO 1 ≠ LUCRO ECONÔMICO 2")
                 st.write(f"Lucro Econômico 1: R$ {lucro_eco1/1000:,.0f} mil")
                 st.write(f"Lucro Econômico 2: R$ {lucro_eco2/1000:,.0f} mil")
                 st.write(f"Diferença: R$ {diferenca/1000:,.0f} mil")
+                
+                # Mostrar cálculo detalhado para debug
+                with st.expander("🐛 Debug - Ver Cálculo Detalhado"):
+                    st.write(f"**ROI:** {df_filtrado['ROI'].iloc[0]:.6%}")
+                    st.write(f"**WACC:** {df_filtrado['wacc'].iloc[0]:.6%}")
+                    st.write(f"**Investimento Médio:** R$ {df_filtrado['Investimento Médio'].iloc[0]:,.2f}")
+                    st.write(f"**Resultado Operacional:** R$ {df_filtrado['Resultado Antes do Resultado Financeiro e dos Tributos'].iloc[0]:,.2f}")
+                    st.write("")
+                    st.write("**Lucro Econômico 1:** (ROI - WACC) × Investimento Médio")
+                    st.write(f"= ({df_filtrado['ROI'].iloc[0]:.6%} - {df_filtrado['wacc'].iloc[0]:.6%}) × R$ {df_filtrado['Investimento Médio'].iloc[0]:,.2f}")
+                    st.write(f"= R$ {lucro_eco1:,.2f}")
+                    st.write("")
+                    st.write("**Lucro Econômico 2:** Resultado Operacional - (WACC × Investimento Médio)")
+                    st.write(f"= R$ {df_filtrado['Resultado Antes do Resultado Financeiro e dos Tributos'].iloc[0]:,.2f} - ({df_filtrado['wacc'].iloc[0]:.6%} × R$ {df_filtrado['Investimento Médio'].iloc[0]:,.2f})")
+                    st.write(f"= R$ {lucro_eco2:,.2f}")
         else:
             st.info("ℹ️ Dados de Lucro Econômico não disponíveis para verificação")
         
@@ -653,7 +687,7 @@ elif modo_analise == "📈 Visão por Empresa":
                 "Empréstimos e Financiamentos - Não Circulante"
             ]].iloc[0]
             
-            # Formatar valores em milhões
+            # Formatar valores em milhares
             dados_formatados = (dados_brutos / 1000).apply(lambda x: f"R$ {x:,.0f}" if pd.notna(x) else "N/A")
             st.dataframe(dados_formatados.to_frame("Valor (R$ Mil)"), use_container_width=True)
     
@@ -756,7 +790,7 @@ formulas = {
     "ke (Custo do Capital Próprio)": "Dividendos Pagos ÷ Patrimônio Líquido Médio",
     "WACC": "(ki × % Capital Terceiros) + (ke × % Capital Próprio)",
     "Lucro Econômico 1": "(ROI - WACC) × Investimento Médio",
-    "Lucro Econômico 2": "Lucro Líquido - (WACC × Investimento Médio)",
+    "Lucro Econômico 2": "Resultado Operacional - (WACC × Investimento Médio)",  # CORRIGIDO
     "EBITDA": "Resultado Antes dos Tributos + Despesas Financeiras",
     "ROI EBITDA": "EBITDA ÷ Investimento Médio",
     "Percentual Capital Terceiros": "(Passivo Circulante + Não Circulante) ÷ Total Passivo",
@@ -794,24 +828,23 @@ st.divider()
 st.caption(f"📊 Dashboard CVM - Indicadores Financeiros | Dados atualizados para {ano_selecionado} | Total de empresas na base: {df['Ticker'].nunique()}")
 
 # Adicionar informações sobre os cálculos
-with st.sidebar.expander("💡 Metodologia CPFE3 - VERSÃO CORRIGIDA"):
+with st.sidebar.expander("💡 Metodologia CPFE3 - VERSÃO FINAL CORRIGIDA"):
     st.write("""
     **CORREÇÕES APLICADAS:**
 
-    ✅ **Médias Corrigidas:**
-    - Passivo Oneroso Médio: (Passivo Oneroso atual + anterior) ÷ 2
-    - Investimento Médio: (Investimento atual + anterior) ÷ 2
-
     ✅ **Lucro Econômico 2 Corrigido:**
-    - Fórmula anterior: Lucro Líquido - Despesas Financeiras - Dividendos
-    - Fórmula corrigida: Lucro Líquido - (WACC × Investimento Médio)
+    - Fórmula anterior: Lucro Líquido - (WACC × Investimento Médio)
+    - Fórmula corrigida: Resultado Operacional - (WACC × Investimento Médio)
 
-    ✅ **EBITDA Aproximado:**
-    - Fórmula: Resultado Antes dos Tributos + Despesas Financeiras
+    ✅ **Consistência Garantida:**
+    - ROI = Resultado Operacional ÷ Investimento Médio
+    - Lucro Econômico 1 = (ROI - WACC) × Investimento Médio
+    - Lucro Econômico 2 = Resultado Operacional - (WACC × Investimento Médio)
+    - **RESULTADO:** Lucro Econômico 1 = Lucro Econômico 2
 
     **VERIFICAÇÃO:**
-    - Lucro Econômico 1 deve ser ≈ Lucro Econômico 2
-    - Se diferentes, indica problemas nos cálculos intermediários
+    - Se Lucro Econômico 1 ≠ Lucro Econômico 2, há erro nos cálculos
+    - Diferença deve ser próxima de zero (dentro da tolerância)
     """)
 
 # FIM DO SCRIPT
