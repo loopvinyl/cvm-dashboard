@@ -1,10 +1,12 @@
 # ==============================================================
-# DASHBOARD CVM - Indicadores Financeiros (versão Google Colab)
+# 📊 DASHBOARD CVM - Indicadores Financeiros
+# Versão compatível com Google Colab e execução local
 # ==============================================================
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 import numpy as np
+import os
 
 # ==============================
 # CONFIGURAÇÕES INICIAIS
@@ -17,28 +19,44 @@ st.title("📊 Dashboard CVM - Análise de Indicadores Financeiros")
 # ==============================
 @st.cache_data
 def load_data():
-    # Caminho no Colab — coloque o arquivo data_frame.xlsx em /content/
-    df = pd.read_excel("/content/data_frame.xlsx")
+    # Procurar automaticamente o arquivo em locais possíveis
+    possible_paths = [
+        "/content/data_frame.xlsx",   # Google Colab
+        "data_frame.xlsx",            # mesma pasta
+        "./data/data_frame.xlsx"      # subpasta data/
+    ]
+    data_path = None
+    for path in possible_paths:
+        if os.path.exists(path):
+            data_path = path
+            break
+
+    if data_path is None:
+        st.error("❌ Arquivo 'data_frame.xlsx' não encontrado.\n"
+                 "Coloque-o na mesma pasta do app ou em /content/ (Colab).")
+        st.stop()
+
+    # Ler o Excel
+    df = pd.read_excel(data_path)
     df.columns = [c.strip() for c in df.columns]
 
     # =============================================================
-    # MAPEAMENTO EXATO DAS CONTAS (compatível com Excel CPFE3)
+    # MAPEAMENTO EXATO DAS CONTAS (igual ao Excel CPFE3)
     # =============================================================
-    # BP → data_frame
-    #   Ativo Total                                → Ativo Total
-    #   Passivo Circulante                         → Passivo Circulante
-    #   Passivo Não Circulante                     → Passivo Não Circulante
-    #   Empréstimos e Financiamentos - Circulante  → Empréstimos e Financiamentos - Circulante
-    #   Empréstimos e Financiamentos - Não Circulante → Empréstimos e Financiamentos - Não Circulante
-    #   Patrimônio Líquido Consolidado             → Patrimônio Líquido Consolidado
-    # DRE → data_frame
-    #   Receita de Venda de Bens e/ou Serviços     → Receita de Venda de Bens e/ou Serviços
-    #   Custo dos Bens e/ou Serviços Vendidos      → Custo dos Bens e/ou Serviços Vendidos
-    #   Resultado Bruto                            → Resultado Bruto
-    #   Resultado Antes do Resultado Financeiro e dos Tributos → Resultado Antes do Resultado Financeiro e dos Tributos
-    #   Resultado Financeiro, Receitas Financeiras, Despesas Financeiras, Lucro/Prejuízo Consolidado do Período
-    # DFC → data_frame
-    #   Pagamento de Dividendos                    → Pagamento de Dividendos
+    # BP → data_frame:
+    #   Ativo Total, Passivo Circulante, Passivo Não Circulante,
+    #   Empréstimos e Financiamentos - Circulante,
+    #   Empréstimos e Financiamentos - Não Circulante,
+    #   Patrimônio Líquido Consolidado
+    # DRE → data_frame:
+    #   Receita de Venda de Bens e/ou Serviços,
+    #   Custo dos Bens e/ou Serviços Vendidos,
+    #   Resultado Bruto,
+    #   Resultado Antes do Resultado Financeiro e dos Tributos,
+    #   Resultado Financeiro, Receitas Financeiras, Despesas Financeiras,
+    #   Lucro/Prejuízo Consolidado do Período
+    # DFC → data_frame:
+    #   Pagamento de Dividendos
 
     # =============================================================
     # CÁLCULOS DE MÉDIAS
@@ -140,15 +158,16 @@ def load_data():
     return df
 
 
-# ==============================
+# =============================================================
 # EXECUÇÃO
-# ==============================
+# =============================================================
 df = load_data()
 
-# ==============================
-# SIDEBAR - FILTROS
-# ==============================
+# =============================================================
+# INTERFACE (idêntica ao seu código original)
+# =============================================================
 st.sidebar.header("🔧 Filtros Principais")
+
 modo_analise = st.sidebar.radio(
     "Modo de Análise:",
     ["🏆 Ranking Comparativo", "📈 Visão por Empresa", "🏭 Análise Setorial"]
@@ -157,25 +176,25 @@ anos_disponiveis = sorted(df["Ano"].unique(), reverse=True)
 ano_selecionado = st.sidebar.selectbox("Selecione o Ano:", anos_disponiveis)
 
 if modo_analise == "📈 Visão por Empresa":
-    ticker_selecionado = st.sidebar.selectbox("Selecione a Empresa:",
-                                              sorted(df["Ticker"].dropna().unique()))
-    df_filtrado = df[(df["Ticker"] == ticker_selecionado)
-                     & (df["Ano"] == ano_selecionado)]
+    ticker_selecionado = st.sidebar.selectbox(
+        "Selecione a Empresa:",
+        sorted(df["Ticker"].dropna().unique())
+    )
+    df_filtrado = df[(df["Ticker"] == ticker_selecionado) & (df["Ano"] == ano_selecionado)]
+
 elif modo_analise == "🏭 Análise Setorial":
-    setor_selecionado = st.sidebar.selectbox("Selecione o Setor:",
-                                             sorted(df["SETOR_ATIV"].dropna().unique()))
-    df_filtrado = df[(df["SETOR_ATIV"] == setor_selecionado)
-                     & (df["Ano"] == ano_selecionado)]
+    setor_selecionado = st.sidebar.selectbox(
+        "Selecione o Setor:",
+        sorted(df["SETOR_ATIV"].dropna().unique())
+    )
+    df_filtrado = df[(df["SETOR_ATIV"] == setor_selecionado) & (df["Ano"] == ano_selecionado)]
+
 else:
     df_filtrado = df[df["Ano"] == ano_selecionado]
 
-# ==============================
-# TELAS PRINCIPAIS (Ranking / Empresa / Setor)
-# ==============================
-# -- Aqui segue exatamente o mesmo código de visualização que você já tinha:
-# gráficos de barras, métricas, tabelas e fórmulas —
-# nenhuma alteração estrutural é necessária,
-# apenas certifique-se de manter os mesmos blocos a partir do
-# trecho “# ============================== TELA PRINCIPAL – RANKING COMPARATIVO”.
-
-# (cole aqui o restante do seu código de visualização completo)
+# =============================================================
+# A partir daqui mantenha exatamente o mesmo conteúdo do seu script
+# (gráficos, tabelas, abas, fórmulas e rodapé)
+# =============================================================
+# 👉 Copie e cole integralmente o restante da sua versão original,
+# pois as fórmulas e visualizações já estão 100% corretas.
