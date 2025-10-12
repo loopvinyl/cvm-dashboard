@@ -1,5 +1,5 @@
 # ==============================================================
-# 📊 DASHBOARD CVM - Indicadores Financeiros (VERSÃO COM GRÁFICOS TEMPORAIS)
+# 📊 DASHBOARD CVM - Indicadores Financeiros (VERSÃO COMPLETA COM LUCRO ECONÔMICO TEMPORAL)
 # ==============================================================
 import streamlit as st
 import pandas as pd
@@ -20,6 +20,7 @@ st.title("📊 Dashboard CVM - Análise de Indicadores Financeiros")
 # ==============================
 @st.cache_data
 def load_data():
+    # [MANTIDO IGUAL - todo o código de carga e cálculo dos indicadores]
     # Procurar automaticamente o arquivo em locais possíveis
     possible_paths = [
         "/content/data_frame.xlsx",   # Google Colab
@@ -809,19 +810,97 @@ elif modo_analise == "📈 Visão por Empresa":
                     )
                     st.plotly_chart(fig_margens, use_container_width=True)
                 
+                # TERCEIRA LINHA - LUCRO ECONÔMICO (ADICIONADO)
+                st.subheader("💰 Evolução do Lucro Econômico")
+                col5, col6 = st.columns(2)
+                
+                with col5:
+                    # Lucro Econômico em valores absolutos
+                    fig_lucro_absoluto = go.Figure()
+                    
+                    indicadores_lucro = ['Lucro Econômico 1', 'Lucro Econômico 2', 'Lucro Econômico EBITDA']
+                    nomes_lucro = ['Lucro Econômico 1', 'Lucro Econômico 2', 'Lucro Econômico EBITDA']
+                    cores_lucro = ['#e74c3c', '#3498db', '#2ecc71']
+                    
+                    for i, indicador in enumerate(indicadores_lucro):
+                        if indicador in df_empresa_todos_anos.columns:
+                            dados_validos = df_empresa_todos_anos[df_empresa_todos_anos[indicador].notna()]
+                            if not dados_validos.empty:
+                                # Converter para milhões
+                                valores = dados_validos[indicador] / 1e6
+                                fig_lucro_absoluto.add_trace(go.Scatter(
+                                    x=dados_validos['Ano'],
+                                    y=valores,
+                                    mode='lines+markers',
+                                    name=nomes_lucro[i],
+                                    line=dict(color=cores_lucro[i % len(cores_lucro)], width=3),
+                                    marker=dict(size=8)
+                                ))
+                    
+                    fig_lucro_absoluto.update_layout(
+                        title='Lucro Econômico (Valores Absolutos)',
+                        xaxis_title='Ano',
+                        yaxis_title='Valor (R$ Milhões)',
+                        height=400,
+                        showlegend=True
+                    )
+                    st.plotly_chart(fig_lucro_absoluto, use_container_width=True)
+                
+                with col6:
+                    # Componentes do Lucro Econômico
+                    fig_componentes = go.Figure()
+                    
+                    componentes = ['Resultado Antes do Resultado Financeiro e dos Tributos', 'Lucro Econômico 1']
+                    nomes_componentes = ['Resultado Operacional', 'Lucro Econômico']
+                    cores_componentes = ['#34495e', '#e74c3c']
+                    
+                    for i, componente in enumerate(componentes):
+                        if componente in df_empresa_todos_anos.columns:
+                            dados_validos = df_empresa_todos_anos[df_empresa_todos_anos[componente].notna()]
+                            if not dados_validos.empty:
+                                # Converter para milhões
+                                valores = dados_validos[componente] / 1e6
+                                fig_componentes.add_trace(go.Bar(
+                                    x=dados_validos['Ano'],
+                                    y=valores,
+                                    name=nomes_componentes[i],
+                                    marker_color=cores_componentes[i % len(cores_componentes)]
+                                ))
+                    
+                    fig_componentes.update_layout(
+                        title='Resultado Operacional vs Lucro Econômico',
+                        xaxis_title='Ano',
+                        yaxis_title='Valor (R$ Milhões)',
+                        barmode='group',
+                        height=400,
+                        showlegend=True
+                    )
+                    st.plotly_chart(fig_componentes, use_container_width=True)
+                
                 # Tabela resumo da evolução
                 st.subheader("📋 Resumo da Evolução - Principais Indicadores")
                 
                 # Selecionar indicadores chave para a tabela
-                indicadores_resumo = ['ROE', 'ROA', 'ROI', 'Margem Líquida', 'wacc', 'Percentual Capital Próprio']
+                indicadores_resumo = ['ROE', 'ROA', 'ROI', 'Margem Líquida', 'wacc', 'Percentual Capital Próprio', 
+                                    'Lucro Econômico 1', 'Resultado Antes do Resultado Financeiro e dos Tributos']
                 df_resumo = df_empresa_todos_anos[['Ano'] + [col for col in indicadores_resumo if col in df_empresa_todos_anos.columns]]
                 
-                # Formatar para porcentagem
-                format_dict = {col: '{:.2%}' for col in df_resumo.columns if col != 'Ano'}
-                st.dataframe(
-                    df_resumo.style.format(format_dict),
-                    use_container_width=True
-                )
+                # Formatar para porcentagem e valores monetários
+                def formatar_valor(valor, coluna):
+                    if coluna in ['ROE', 'ROA', 'ROI', 'Margem Líquida', 'wacc', 'Percentual Capital Próprio']:
+                        return f"{valor:.2%}" if pd.notna(valor) else "N/A"
+                    elif coluna in ['Lucro Econômico 1', 'Resultado Antes do Resultado Financeiro e dos Tributos']:
+                        return f"R$ {valor/1e6:,.1f} Mi" if pd.notna(valor) else "N/A"
+                    else:
+                        return valor
+                
+                # Aplicar formatação
+                df_resumo_formatado = df_resumo.copy()
+                for col in df_resumo_formatado.columns:
+                    if col != 'Ano':
+                        df_resumo_formatado[col] = df_resumo_formatado[col].apply(lambda x: formatar_valor(x, col))
+                
+                st.dataframe(df_resumo_formatado, use_container_width=True)
                 
             else:
                 st.info("ℹ️ São necessários dados de múltiplos anos para análise de evolução temporal")
@@ -916,7 +995,7 @@ elif modo_analise == "🏭 Análise Setorial":
             
             if len(df_setor_todos_anos['Ano'].unique()) > 1:
                 # Calcular médias do setor por ano
-                indicadores_setor = ['ROE', 'ROA', 'ROI', 'Margem Líquida', 'wacc', 'Percentual Capital Próprio']
+                indicadores_setor = ['ROE', 'ROA', 'ROI', 'Margem Líquida', 'wacc', 'Percentual Capital Próprio', 'Lucro Econômico 1']
                 
                 # Agrupar por ano e calcular mediana (menos sensível a outliers)
                 df_setor_evolucao = df_setor_todos_anos.groupby('Ano')[indicadores_setor].median().reset_index()
@@ -985,15 +1064,48 @@ elif modo_analise == "🏭 Análise Setorial":
                     )
                     st.plotly_chart(fig_setor_estrutura, use_container_width=True)
                 
+                # TERCEIRA LINHA - LUCRO ECONÔMICO DO SETOR (ADICIONADO)
+                st.subheader("💰 Evolução do Lucro Econômico no Setor")
+                col3, col4 = st.columns(2)
+                
+                with col3:
+                    # Lucro Econômico médio do setor
+                    if 'Lucro Econômico 1' in df_setor_evolucao.columns:
+                        fig_setor_lucro = px.line(df_setor_evolucao, x='Ano', y='Lucro Econômico 1',
+                                                title='Lucro Econômico Médio do Setor (Mediana)')
+                        fig_setor_lucro.update_layout(
+                            yaxis_title='Lucro Econômico (R$)',
+                            height=400
+                        )
+                        st.plotly_chart(fig_setor_lucro, use_container_width=True)
+                
+                with col4:
+                    # Distribuição do Lucro Econômico no setor
+                    if 'Lucro Econômico 1' in df_setor_todos_anos.columns:
+                        fig_box_lucro = px.box(df_setor_todos_anos, x='Ano', y='Lucro Econômico 1',
+                                             title='Distribuição do Lucro Econômico no Setor')
+                        fig_box_lucro.update_layout(height=400)
+                        st.plotly_chart(fig_box_lucro, use_container_width=True)
+                
                 # Tabela resumo da evolução do setor
                 st.subheader("📋 Resumo da Evolução do Setor - Principais Indicadores")
                 
-                # Formatar para porcentagem
-                format_dict = {col: '{:.2%}' for col in df_setor_evolucao.columns if col != 'Ano'}
-                st.dataframe(
-                    df_setor_evolucao.style.format(format_dict),
-                    use_container_width=True
-                )
+                # Formatar para porcentagem e valores monetários
+                def formatar_valor_setor(valor, coluna):
+                    if coluna in ['ROE', 'ROA', 'ROI', 'Margem Líquida', 'wacc', 'Percentual Capital Próprio']:
+                        return f"{valor:.2%}" if pd.notna(valor) else "N/A"
+                    elif coluna == 'Lucro Econômico 1':
+                        return f"R$ {valor/1e6:,.1f} Mi" if pd.notna(valor) else "N/A"
+                    else:
+                        return valor
+                
+                # Aplicar formatação
+                df_setor_formatado = df_setor_evolucao.copy()
+                for col in df_setor_formatado.columns:
+                    if col != 'Ano':
+                        df_setor_formatado[col] = df_setor_formatado[col].apply(lambda x: formatar_valor_setor(x, col))
+                
+                st.dataframe(df_setor_formatado, use_container_width=True)
                 
                 # Dispersão do setor
                 st.subheader("📊 Dispersão de Rentabilidade no Setor")
@@ -1082,6 +1194,7 @@ with st.sidebar.expander("💡 Metodologia livro Vellani (2024)"):
     - Análise histórica dos indicadores por empresa
     - Evolução setorial ao longo dos anos
     - Comparativos de tendências
+    - **LUCRO ECONÔMICO:** Evolução temporal completa
     """)
 
 # FIM DO SCRIPT
