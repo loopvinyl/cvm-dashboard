@@ -199,22 +199,22 @@ def load_data():
         # Usar a coluna consolidada 'Depreciação e amortização' (nome correto do relatório)
         df["EBITDA"] = np.where(
             df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna(),
-            df["Resultado Antes do Resultado Financeiro e dos Tributos"] + df["Depreciação e amortização"].fillna(0),
+            df["Resultado Antes do Resultado Financeiro e dos Tributos"] - df["Depreciação e amortização"].fillna(0),
             np.nan
         )
     elif tem_depreciacao_separada and tem_amortizacao_separada:
         # Calcular a soma de Depreciação + Amortização
-        depreciacao_amortizacao = df['Depreciação'].fillna(0) + df['Amortização'].fillna(0)
+        depreciacao_amortizacao = df['Depreciação'].fillna(0) - df['Amortização'].fillna(0)
         df["EBITDA"] = np.where(
             df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna(),
-            df["Resultado Antes do Resultado Financeiro e dos Tributos"] + depreciacao_amortizacao,
+            df["Resultado Antes do Resultado Financeiro e dos Tributos"] - depreciacao_amortizacao,
             np.nan
         )
     elif tem_depreciacao_separada:
         # Usar apenas Depreciação
         df["EBITDA"] = np.where(
             df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna(),
-            df["Resultado Antes do Resultado Financeiro e dos Tributos"] + df['Depreciação'].fillna(0),
+            df["Resultado Antes do Resultado Financeiro e dos Tributos"] - df['Depreciação'].fillna(0),
             np.nan
         )
     else:
