@@ -12,8 +12,8 @@ import os
 # ==============================
 # CONFIGURAÇÕES INICIAIS
 # ==============================
-st.set_page_config(page_title="Análise das Demonstrações Financeiras", layout="wide")
-st.title("Referência: Vellani (2024)")
+st.set_page_config(page_title="vellani (2024)", layout="wide")
+st.title("Análise das Demonstrações Financeiras")
 
 # ==============================
 # LEITURA DE DADOS
@@ -1161,8 +1161,10 @@ with col2:
 st.sidebar.divider()
 st.sidebar.header("ℹ️ Informações")
 st.sidebar.info(
-    "Este dashboard apresenta os principais indicadores financeiros "
-    "calculados conforme metodologia Vellani (2024)"
+    "Indicadores financeiros "
+    "calculados conforme livro "
+    "Análise das Demonstrações"
+    "Financeira (VELLANI, 2024)"
 )
 
 # Rodapé
