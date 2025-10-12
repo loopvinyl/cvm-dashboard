@@ -187,47 +187,40 @@ def load_data():
     )
 
     # =============================================================
-# EBITDA CORRIGIDO - TRATANDO VALORES NEGATIVOS
-# =============================================================
-
-# Hierarquia de busca baseada no relatório
-tem_depreciacao_amortizacao_consolidada = 'Depreciação e amortização' in df.columns
-tem_depreciacao_separada = 'Depreciação' in df.columns
-tem_amortizacao_separada = 'Amortização' in df.columns
-
-if tem_depreciacao_amortizacao_consolidada:
-    # Usar a coluna consolidada 'Depreciação e amortização'
-    # CORREÇÃO: considerar que valores negativos devem ser SOMADOS (não subtraídos)
-    depreciacao_amortizacao = df["Depreciação e amortização"].fillna(0)
-    df["EBITDA"] = np.where(
-        df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna(),
-        df["Resultado Antes do Resultado Financeiro e dos Tributos"] + abs(depreciacao_amortizacao),
-        np.nan
-    )
-elif tem_depreciacao_separada and tem_amortizacao_separada:
-    # Calcular a soma de Depreciação + Amortização
-    # CORREÇÃO: usar valores absolutos para garantir soma correta
-    depreciacao = df['Depreciação'].fillna(0)
-    amortizacao = df['Amortização'].fillna(0)
-    depreciacao_amortizacao = abs(depreciacao) + abs(amortizacao)
-    df["EBITDA"] = np.where(
-        df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna(),
-        df["Resultado Antes do Resultado Financeiro e dos Tributos"] + depreciacao_amortizacao,
-        np.nan
-    )
-elif tem_depreciacao_separada:
-    # Usar apenas Depreciação
-    # CORREÇÃO: usar valor absoluto
-    depreciacao = abs(df['Depreciação'].fillna(0))
-    df["EBITDA"] = np.where(
-        df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna(),
-        df["Resultado Antes do Resultado Financeiro e dos Tributos"] + depreciacao,
-        np.nan
-    )
-else:
-    # Se não temos dados de depreciação, usar aproximação
-    df["EBITDA"] = df["Resultado Antes do Resultado Financeiro e dos Tributos"]
-    st.warning("⚠️ Dados de Depreciação/Amortização não encontrados. EBITDA calculado como aproximação do Resultado Operacional.")
+    # EBITDA CORRIGIDO - BASEADO NO RELATÓRIO dff_2010_2024
+    # =============================================================
+    
+    # Hierarquia de busca baseada no relatório
+    tem_depreciacao_amortizacao_consolidada = 'Depreciação e amortização' in df.columns
+    tem_depreciacao_separada = 'Depreciação' in df.columns
+    tem_amortizacao_separada = 'Amortização' in df.columns
+    
+    if tem_depreciacao_amortizacao_consolidada:
+        # Usar a coluna consolidada 'Depreciação e amortização' (nome correto do relatório)
+        df["EBITDA"] = np.where(
+            df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna(),
+            df["Resultado Antes do Resultado Financeiro e dos Tributos"] + df["Depreciação e amortização"].fillna(0),
+            np.nan
+        )
+    elif tem_depreciacao_separada and tem_amortizacao_separada:
+        # Calcular a soma de Depreciação + Amortização
+        depreciacao_amortizacao = df['Depreciação'].fillna(0) + df['Amortização'].fillna(0)
+        df["EBITDA"] = np.where(
+            df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna(),
+            df["Resultado Antes do Resultado Financeiro e dos Tributos"] + depreciacao_amortizacao,
+            np.nan
+        )
+    elif tem_depreciacao_separada:
+        # Usar apenas Depreciação
+        df["EBITDA"] = np.where(
+            df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna(),
+            df["Resultado Antes do Resultado Financeiro e dos Tributos"] + df['Depreciação'].fillna(0),
+            np.nan
+        )
+    else:
+        # Se não temos dados de depreciação, usar aproximação
+        df["EBITDA"] = df["Resultado Antes do Resultado Financeiro e dos Tributos"]
+        st.warning("⚠️ Dados de Depreciação/Amortização não encontrados. EBITDA calculado como aproximação do Resultado Operacional.")
 
     # =============================================================
     # LUCRO ECONÔMICO - CORRIGIDOS CONFORME VELLANI
@@ -603,15 +596,12 @@ elif modo_analise == "📈 Visão por Empresa":
                         tem_depreciacao_separada = 'Depreciação' in df_filtrado.columns and pd.notna(df_filtrado['Depreciação'].iloc[0])
                         tem_amortizacao_separada = 'Amortização' in df_filtrado.columns and pd.notna(df_filtrado['Amortização'].iloc[0])
                         
-                        # No detalhamento do cálculo do EBITDA - CORRIGIR
-if tem_depreciacao_amortizacao_consolidada:
-    depreciacao_amortizacao = df_filtrado['Depreciação e amortização'].iloc[0]
-    # CORREÇÃO: mostrar valor absoluto no detalhamento
-    depreciacao_amortizacao_abs = abs(depreciacao_amortizacao)
-    st.write(f"**Resultado Operacional:** R$ {resultado_operacional/1000:,.0f} mil")
-    st.write(f"**Depreciação e Amortização:** R$ {depreciacao_amortizacao_abs/1000:,.0f} mil")
-    st.write(f"**EBITDA = Resultado Operacional + Depreciação e Amortização**")
-    st.write(f"**EBITDA =** R$ {resultado_operacional/1000:,.0f} mil + R$ {depreciacao_amortizacao_abs/1000:,.0f} mil = **R$ {ebitda_valor/1000:,.0f} mil**")
+                        if tem_depreciacao_amortizacao_consolidada:
+                            depreciacao_amortizacao = df_filtrado['Depreciação e amortização'].iloc[0]
+                            st.write(f"**Resultado Operacional:** R$ {resultado_operacional/1000:,.0f} mil")
+                            st.write(f"**Depreciação e Amortização:** R$ {depreciacao_amortizacao/1000:,.0f} mil")
+                            st.write(f"**EBITDA = Resultado Operacional + Depreciação e Amortização**")
+                            st.write(f"**EBITDA =** R$ {resultado_operacional/1000:,.0f} mil + R$ {depreciacao_amortizacao/1000:,.0f} mil = **R$ {ebitda_valor/1000:,.0f} mil**")
                         
                         elif tem_depreciacao_separada and tem_amortizacao_separada:
                             depreciacao = df_filtrado['Depreciação'].iloc[0]
@@ -637,6 +627,130 @@ if tem_depreciacao_amortizacao_consolidada:
                     
                     else:
                         st.warning("Dados de EBITDA não disponíveis")
+
+                    # =============================================================
+                    # VALUATION POR EBITDA E SELIC - NOVA SEÇÃO
+                    # =============================================================
+                    st.divider()
+                    st.subheader("📈 Valuation por EBITDA e SELIC")
+
+                    if ebitda_valor is not None and ebitda_valor > 0:
+                        # Parâmetros
+                        selic_anual = 0.15  # 15% ao ano - SELIC atual
+                        st.info(f"💡 **Parâmetros utilizados:** SELIC = {selic_anual:.1%} ao ano")
+                        
+                        # Cálculo do Valor de Mercado Esperado
+                        valor_mercado_esperado = ebitda_valor / selic_anual
+                        
+                        # Buscar número de ações e cotação atual
+                        try:
+                            import yfinance as yf
+                            
+                            # Formatar ticker para Yahoo Finance (adicionar .SA)
+                            ticker_yahoo = f"{ticker_selecionado}.SA"
+                            
+                            # Buscar dados do Yahoo Finance
+                            acao = yf.Ticker(ticker_yahoo)
+                            info = acao.info
+                            historico = acao.history(period="1d")
+                            
+                            # Extrair informações
+                            if not historico.empty:
+                                cotacao_atual = historico['Close'].iloc[-1]
+                                
+                                # Número de ações em circulação
+                                shares_outstanding = info.get('sharesOutstanding')
+                                
+                                if shares_outstanding and shares_outstanding > 0:
+                                    # Cálculo do preço esperado por ação
+                                    preco_esperado_acao = valor_mercado_esperado / shares_outstanding
+                                    
+                                    # Exibir resultados
+                                    col1, col2, col3 = st.columns(3)
+                                    
+                                    with col1:
+                                        st.metric(
+                                            "Valor Empresa Esperado", 
+                                            f"R$ {valor_mercado_esperado/1e9:.2f} Bi",
+                                            help="EBITDA ÷ SELIC"
+                                        )
+                                    
+                                    with col2:
+                                        st.metric(
+                                            "Preço Esperado por Ação", 
+                                            f"R$ {preco_esperado_acao:.2f}",
+                                            help="Valor Empresa ÷ Nº de Ações"
+                                        )
+                                    
+                                    with col3:
+                                        variacao_percentual = ((preco_esperado_acao - cotacao_atual) / cotacao_atual) * 100
+                                        st.metric(
+                                            "Cotação Atual", 
+                                            f"R$ {cotacao_atual:.2f}",
+                                            delta=f"{variacao_percentual:+.1f}% vs Esperado"
+                                        )
+                                    
+                                    # Gráfico comparativo
+                                    fig_comparacao = go.Figure()
+                                    
+                                    fig_comparacao.add_trace(go.Indicator(
+                                        mode = "number+gauge+delta",
+                                        value = cotacao_atual,
+                                        number = {'prefix': "R$"},
+                                        delta = {'reference': preco_esperado_acao, 'relative': True},
+                                        domain = {'x': [0, 1], 'y': [0, 1]},
+                                        title = {'text': "Cotação Atual vs Esperada"},
+                                        gauge = {
+                                            'shape': "bullet",
+                                            'axis': {'range': [None, max(cotacao_atual, preco_esperado_acao) * 1.2]},
+                                            'threshold': {
+                                                'line': {'color': "red", 'width': 2},
+                                                'thickness': 0.75,
+                                                'value': preco_esperado_acao
+                                            },
+                                            'steps': [
+                                                {'range': [0, preco_esperado_acao], 'color': "lightgray"},
+                                                {'range': [preco_esperado_acao, max(cotacao_atual, preco_esperado_acao) * 1.2], 'color': "gray"}
+                                            ]
+                                        }
+                                    ))
+                                    
+                                    st.plotly_chart(fig_comparacao, use_container_width=True)
+                                    
+                                    # Análise interpretativa
+                                    st.subheader("🔍 Análise Interpretativa")
+                                    
+                                    if preco_esperado_acao > cotacao_atual:
+                                        st.success(f"**📈 SUBVALORIZADA:** O preço esperado (R$ {preco_esperado_acao:.2f}) é **{variacao_percentual:+.1f}% maior** que a cotação atual (R$ {cotacao_atual:.2f})")
+                                        st.write("📊 **Interpretação:** O mercado pode estar precificando a ação abaixo do seu valor fundamental baseado no EBITDA atual.")
+                                    else:
+                                        st.warning(f"**📉 SOBREVALORIZADA:** O preço esperado (R$ {preco_esperado_acao:.2f}) é **{abs(variacao_percentual):.1f}% menor** que a cotação atual (R$ {cotacao_atual:.2f})")
+                                        st.write("📊 **Interpretação:** O mercado pode estar precificando a ação acima do seu valor fundamental baseado no EBITDA atual.")
+                                    
+                                    # Detalhamento dos cálculos
+                                    with st.expander("🔢 Detalhamento dos Cálculos"):
+                                        st.write(f"**Fórmulas utilizadas:**")
+                                        st.write(f"1. **Valor de Empresa Esperado** = EBITDA ÷ SELIC")
+                                        st.write(f"   = R$ {ebitda_valor/1e6:,.0f} Mi ÷ {selic_anual:.1%} = R$ {valor_mercado_esperado/1e9:.2f} Bi")
+                                        st.write(f"2. **Preço Esperado por Ação** = Valor de Empresa ÷ Número de Ações")
+                                        st.write(f"   = R$ {valor_mercado_esperado/1e9:.2f} Bi ÷ {shares_outstanding/1e6:,.0f} Mi ações = R$ {preco_esperado_acao:.2f}")
+                                        st.write(f"3. **Variação** = (Preço Esperado - Cotação Atual) ÷ Cotação Atual")
+                                        st.write(f"   = (R$ {preco_esperado_acao:.2f} - R$ {cotacao_atual:.2f}) ÷ R$ {cotacao_atual:.2f} = {variacao_percentual:+.1f}%")
+                                        
+                                else:
+                                    st.warning("Não foi possível obter o número de ações em circulação para este ticker.")
+                            
+                            else:
+                                st.warning(f"Não foi possível obter a cotação atual para {ticker_yahoo}")
+                        
+                        except ImportError:
+                            st.error("📦 Biblioteca yfinance não encontrada. Instale com: `pip install yfinance`")
+                        except Exception as e:
+                            st.warning(f"⚠️ Não foi possível buscar dados do Yahoo Finance para {ticker_selecionado}")
+                            st.write(f"*Detalhes do erro: {str(e)}*")
+                            
+                    else:
+                        st.warning("EBITDA não disponível para cálculo de valuation")
                 
                 with tab3:
                     st.subheader("Estrutura de Capital")
