@@ -1,9 +1,11 @@
 # ==============================================================
-# 📊 DASHBOARD CVM - Indicadores Financeiros (VERSÃO FINAL CORRIGIDA)
+# 📊 DASHBOARD CVM - Indicadores Financeiros (VERSÃO COM GRÁFICOS TEMPORAIS)
 # ==============================================================
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import numpy as np
 import os
 
@@ -267,6 +269,8 @@ if modo_analise == "📈 Visão por Empresa":
         sorted(df["Ticker"].dropna().unique())
     )
     df_filtrado = df[(df["Ticker"] == ticker_selecionado) & (df["Ano"] == ano_selecionado)]
+    # Dados para série temporal - todos os anos da empresa selecionada
+    df_empresa_todos_anos = df[df["Ticker"] == ticker_selecionado].sort_values("Ano")
     
 elif modo_analise == "🏭 Análise Setorial":
     setor_selecionado = st.sidebar.selectbox(
@@ -274,6 +278,8 @@ elif modo_analise == "🏭 Análise Setorial":
         sorted(df["SETOR_ATIV"].dropna().unique())
     )
     df_filtrado = df[(df["SETOR_ATIV"] == setor_selecionado) & (df["Ano"] == ano_selecionado)]
+    # Dados para série temporal - todos os anos do setor selecionado
+    df_setor_todos_anos = df[df["SETOR_ATIV"] == setor_selecionado].sort_values(["Ano", "Ticker"])
     
 else:  # Ranking Comparativo
     df_filtrado = df[df["Ano"] == ano_selecionado]
@@ -441,336 +447,568 @@ if modo_analise == "🏆 Ranking Comparativo":
 # TELA - VISÃO POR EMPRESA
 # ==============================
 elif modo_analise == "📈 Visão por Empresa":
-    st.header(f"📊 Análise Detalhada - {ticker_selecionado} ({ano_selecionado})")
+    st.header(f"📊 Análise Detalhada - {ticker_selecionado}")
     
-    if not df_filtrado.empty:
-        # KPIs Principais
-        col1, col2, col3, col4 = st.columns(4)
+    if not df_empresa_todos_anos.empty:
+        # Abas para análise atual vs evolução temporal
+        tab_atual, tab_evolucao = st.tabs(["📊 Análise do Ano", "📈 Evolução Temporal"])
         
-        with col1:
-            valor_roe = df_filtrado["ROE"].iloc[0]
-            if pd.notna(valor_roe):
-                st.metric("ROE", f"{valor_roe:.2%}")
-            else:
-                st.metric("ROE*", "-", 
-                         help="ROE = Lucro Líquido ÷ PL Médio. Calculado apenas quando PL Médio > 0")
-        
-        with col2:
-            valor_roa = df_filtrado["ROA"].iloc[0]
-            if pd.notna(valor_roa):
-                st.metric("ROA", f"{valor_roa:.2%}")
-            else:
-                st.metric("ROA*", "-", 
-                         help="ROA = Resultado Operacional ÷ Ativo Médio. Calculado apenas quando Ativo Médio > 0")
-        
-        with col3:
-            valor_roi = df_filtrado["ROI"].iloc[0]
-            if pd.notna(valor_roi):
-                st.metric("ROI", f"{valor_roi:.2%}")
-            else:
-                st.metric("ROI*", "-", 
-                         help="ROI = Resultado Operacional ÷ Investimento Médio. Calculado apenas quando Investimento Médio > 0")
-        
-        with col4:
-            valor_wacc = df_filtrado["wacc"].iloc[0]
-            if pd.notna(valor_wacc):
-                st.metric("WACC", f"{valor_wacc:.2%}")
-            else:
-                st.metric("WACC*", "-", 
-                         help="WACC não pôde ser calculado devido a dados insuficientes")
-        
-        # VERIFICAÇÃO LUCRO ECONÔMICO 1 vs 2
-        st.subheader("🔍 Verificação: Lucro Econômico 1 vs 2")
-        lucro_eco1 = df_filtrado["Lucro Econômico 1"].iloc[0]
-        lucro_eco2 = df_filtrado["Lucro Econômico 2"].iloc[0]
-        
-        if pd.notna(lucro_eco1) and pd.notna(lucro_eco2):
-            diferenca = abs(lucro_eco1 - lucro_eco2)
-            # Tolerância de 0.1% do maior valor absoluto
-            tolerancia = max(abs(lucro_eco1), abs(lucro_eco2)) * 0.001
+        with tab_atual:
+            st.subheader(f"Ano {ano_selecionado}")
             
-            if diferenca <= tolerancia:
-                st.success("✅ LUCRO ECONÔMICO 1 = LUCRO ECONÔMICO 2")
-                st.write(f"Lucro Econômico 1: R$ {lucro_eco1/1000:,.0f} mil")
-                st.write(f"Lucro Econômico 2: R$ {lucro_eco2/1000:,.0f} mil")
-                st.write(f"Diferença: R$ {diferenca/1000:,.2f} mil (dentro da tolerância)")
+            if not df_filtrado.empty:
+                # KPIs Principais
+                col1, col2, col3, col4 = st.columns(4)
                 
-                # Mostrar cálculo detalhado
-                with st.expander("📊 Ver Cálculo Detalhado"):
-                    st.write(f"**ROI:** {df_filtrado['ROI'].iloc[0]:.4%}")
-                    st.write(f"**WACC:** {df_filtrado['wacc'].iloc[0]:.4%}")
-                    st.write(f"**Investimento Médio:** R$ {df_filtrado['Investimento Médio'].iloc[0]/1000:,.0f} mil")
-                    st.write(f"**Resultado Operacional:** R$ {df_filtrado['Resultado Antes do Resultado Financeiro e dos Tributos'].iloc[0]/1000:,.0f} mil")
-                    st.write("")
-                    st.write("**Lucro Econômico 1:** (ROI - WACC) × Investimento Médio")
-                    st.write(f"= ({df_filtrado['ROI'].iloc[0]:.4%} - {df_filtrado['wacc'].iloc[0]:.4%}) × R$ {df_filtrado['Investimento Médio'].iloc[0]/1000:,.0f} mil")
-                    st.write(f"= R$ {lucro_eco1/1000:,.0f} mil")
-                    st.write("")
-                    st.write("**Lucro Econômico 2:** Resultado Operacional - (WACC × Investimento Médio)")
-                    st.write(f"= R$ {df_filtrado['Resultado Antes do Resultado Financeiro e dos Tributos'].iloc[0]/1000:,.0f} mil - ({df_filtrado['wacc'].iloc[0]:.4%} × R$ {df_filtrado['Investimento Médio'].iloc[0]/1000:,.0f} mil)")
-                    st.write(f"= R$ {lucro_eco2/1000:,.0f} mil")
-            else:
-                st.error("❌ LUCRO ECONÔMICO 1 ≠ LUCRO ECONÔMICO 2")
-                st.write(f"Lucro Econômico 1: R$ {lucro_eco1/1000:,.0f} mil")
-                st.write(f"Lucro Econômico 2: R$ {lucro_eco2/1000:,.0f} mil")
-                st.write(f"Diferença: R$ {diferenca/1000:,.0f} mil")
-                
-                # Mostrar cálculo detalhado para debug
-                with st.expander("🐛 Debug - Ver Cálculo Detalhado"):
-                    st.write(f"**ROI:** {df_filtrado['ROI'].iloc[0]:.6%}")
-                    st.write(f"**WACC:** {df_filtrado['wacc'].iloc[0]:.6%}")
-                    st.write(f"**Investimento Médio:** R$ {df_filtrado['Investimento Médio'].iloc[0]:,.2f}")
-                    st.write(f"**Resultado Operacional:** R$ {df_filtrado['Resultado Antes do Resultado Financeiro e dos Tributos'].iloc[0]:,.2f}")
-                    st.write("")
-                    st.write("**Lucro Econômico 1:** (ROI - WACC) × Investimento Médio")
-                    st.write(f"= ({df_filtrado['ROI'].iloc[0]:.6%} - {df_filtrado['wacc'].iloc[0]:.6%}) × R$ {df_filtrado['Investimento Médio'].iloc[0]:,.2f}")
-                    st.write(f"= R$ {lucro_eco1:,.2f}")
-                    st.write("")
-                    st.write("**Lucro Econômico 2:** Resultado Operacional - (WACC × Investimento Médio)")
-                    st.write(f"= R$ {df_filtrado['Resultado Antes do Resultado Financeiro e dos Tributos'].iloc[0]:,.2f} - ({df_filtrado['wacc'].iloc[0]:.6%} × R$ {df_filtrado['Investimento Médio'].iloc[0]:,.2f})")
-                    st.write(f"= R$ {lucro_eco2:,.2f}")
-        else:
-            st.info("ℹ️ Dados de Lucro Econômico não disponíveis para verificação")
-        
-        # Análise de Alavancagem
-        st.subheader("🔍 Análise de Alavancagem")
-        if pd.notna(df_filtrado["Alavancagem Eficaz"].iloc[0]):
-            if df_filtrado["Alavancagem Eficaz"].iloc[0]:
-                st.success("✅ Alavancagem com Eficácia: SIM")
-                st.write(f"ROE ({df_filtrado['ROE'].iloc[0]:.2%}) > ROA ({df_filtrado['ROA'].iloc[0]:.2%})")
-            else:
-                st.warning("⚠️ Alavancagem com Eficácia: NÃO")
-        else:
-            st.info("ℹ️ Análise de alavancagem não disponível")
-        
-        st.divider()
-        
-        # Abas para diferentes categorias de indicadores
-        tab1, tab2, tab3, tab4, tab5 = st.tabs(["📈 Rentabilidade", "🏛️ Estrutura Capital", "💰 Custo Capital", "📊 Lucro Econômico", "📋 Dados Brutos"])
-        
-        with tab1:
-            st.subheader("Indicadores de Rentabilidade")
-            rentabilidade_cols = ["ROE", "ROA", "ROI", "ROI EBITDA", "Margem Bruta", "Margem Operacional", "Margem Líquida"]
-            rentabilidade_data = []
-            
-            for col in rentabilidade_cols:
-                if col in df_filtrado.columns:
-                    valor = df_filtrado[col].iloc[0]
-                    if pd.notna(valor):
-                        rentabilidade_data.append({
-                            "Indicador": col,
-                            "Valor": f"{valor:.2%}",
-                            "Status": "✓"
-                        })
+                with col1:
+                    valor_roe = df_filtrado["ROE"].iloc[0]
+                    if pd.notna(valor_roe):
+                        st.metric("ROE", f"{valor_roe:.2%}")
                     else:
-                        rentabilidade_data.append({
-                            "Indicador": f"{col}*",
-                            "Valor": "Não calculado",
-                            "Status": "✗"
-                        })
-            
-            if rentabilidade_data:
-                rentabilidade_df = pd.DataFrame(rentabilidade_data)
-                st.dataframe(rentabilidade_df[["Indicador", "Valor"]], use_container_width=True, hide_index=True)
-            else:
-                st.warning("Não há dados de rentabilidade disponíveis")
-        
-        with tab2:
-            st.subheader("Estrutura de Capital")
-            estrutura_cols = ["Percentual Capital Terceiros", "Percentual Capital Próprio"]
-            estrutura_data = []
-            
-            for col in estrutura_cols:
-                if col in df_filtrado.columns:
-                    valor = df_filtrado[col].iloc[0]
-                    if pd.notna(valor):
-                        estrutura_data.append({
-                            "Indicador": col,
-                            "Valor": f"{valor:.2%}",
-                            "Status": "✓"
-                        })
-                    else:
-                        estrutura_data.append({
-                            "Indicador": f"{col}*",
-                            "Valor": "Não calculado",
-                            "Status": "✗"
-                        })
-            
-            if estrutura_data:
-                estrutura_df = pd.DataFrame(estrutura_data)
-                st.dataframe(estrutura_df[["Indicador", "Valor"]], use_container_width=True, hide_index=True)
+                        st.metric("ROE*", "-", 
+                                 help="ROE = Lucro Líquido ÷ PL Médio. Calculado apenas quando PL Médio > 0")
                 
-                # Gráfico de pizza da estrutura de capital (apenas se ambos os valores estiverem disponíveis)
-                valores_validos = [d for d in estrutura_data if d["Status"] == "✓"]
-                if len(valores_validos) >= 2:
-                    nomes = ["Capital Terceiros", "Capital Próprio"]
-                    valores = [df_filtrado["Percentual Capital Terceiros"].iloc[0], 
-                              df_filtrado["Percentual Capital Próprio"].iloc[0]]
+                with col2:
+                    valor_roa = df_filtrado["ROA"].iloc[0]
+                    if pd.notna(valor_roa):
+                        st.metric("ROA", f"{valor_roa:.2%}")
+                    else:
+                        st.metric("ROA*", "-", 
+                                 help="ROA = Resultado Operacional ÷ Ativo Médio. Calculado apenas quando Ativo Médio > 0")
+                
+                with col3:
+                    valor_roi = df_filtrado["ROI"].iloc[0]
+                    if pd.notna(valor_roi):
+                        st.metric("ROI", f"{valor_roi:.2%}")
+                    else:
+                        st.metric("ROI*", "-", 
+                                 help="ROI = Resultado Operacional ÷ Investimento Médio. Calculado apenas quando Investimento Médio > 0")
+                
+                with col4:
+                    valor_wacc = df_filtrado["wacc"].iloc[0]
+                    if pd.notna(valor_wacc):
+                        st.metric("WACC", f"{valor_wacc:.2%}")
+                    else:
+                        st.metric("WACC*", "-", 
+                                 help="WACC não pôde ser calculado devido a dados insuficientes")
+                
+                # VERIFICAÇÃO LUCRO ECONÔMICO 1 vs 2
+                st.subheader("🔍 Verificação: Lucro Econômico 1 vs 2")
+                lucro_eco1 = df_filtrado["Lucro Econômico 1"].iloc[0]
+                lucro_eco2 = df_filtrado["Lucro Econômico 2"].iloc[0]
+                
+                if pd.notna(lucro_eco1) and pd.notna(lucro_eco2):
+                    diferenca = abs(lucro_eco1 - lucro_eco2)
+                    # Tolerância de 0.1% do maior valor absoluto
+                    tolerancia = max(abs(lucro_eco1), abs(lucro_eco2)) * 0.001
                     
-                    fig_pizza = px.pie(
-                        values=valores,
-                        names=nomes,
-                        title="Composição do Capital"
+                    if diferenca <= tolerancia:
+                        st.success("✅ LUCRO ECONÔMICO 1 = LUCRO ECONÔMICO 2")
+                        st.write(f"Lucro Econômico 1: R$ {lucro_eco1/1000:,.0f} mil")
+                        st.write(f"Lucro Econômico 2: R$ {lucro_eco2/1000:,.0f} mil")
+                        st.write(f"Diferença: R$ {diferenca/1000:,.2f} mil (dentro da tolerância)")
+                    else:
+                        st.error("❌ LUCRO ECONÔMICO 1 ≠ LUCRO ECONÔMICO 2")
+                        st.write(f"Lucro Econômico 1: R$ {lucro_eco1/1000:,.0f} mil")
+                        st.write(f"Lucro Econômico 2: R$ {lucro_eco2/1000:,.0f} mil")
+                        st.write(f"Diferença: R$ {diferenca/1000:,.0f} mil")
+                else:
+                    st.info("ℹ️ Dados de Lucro Econômico não disponíveis para verificação")
+                
+                # Análise de Alavancagem
+                st.subheader("🔍 Análise de Alavancagem")
+                if pd.notna(df_filtrado["Alavancagem Eficaz"].iloc[0]):
+                    if df_filtrado["Alavancagem Eficaz"].iloc[0]:
+                        st.success("✅ Alavancagem com Eficácia: SIM")
+                        st.write(f"ROE ({df_filtrado['ROE'].iloc[0]:.2%}) > ROA ({df_filtrado['ROA'].iloc[0]:.2%})")
+                    else:
+                        st.warning("⚠️ Alavancagem com Eficácia: NÃO")
+                else:
+                    st.info("ℹ️ Análise de alavancagem não disponível")
+                
+                st.divider()
+                
+                # Abas para diferentes categorias de indicadores
+                tab1, tab2, tab3, tab4, tab5 = st.tabs(["📈 Rentabilidade", "🏛️ Estrutura Capital", "💰 Custo Capital", "📊 Lucro Econômico", "📋 Dados Brutos"])
+                
+                with tab1:
+                    st.subheader("Indicadores de Rentabilidade")
+                    rentabilidade_cols = ["ROE", "ROA", "ROI", "ROI EBITDA", "Margem Bruta", "Margem Operacional", "Margem Líquida"]
+                    rentabilidade_data = []
+                    
+                    for col in rentabilidade_cols:
+                        if col in df_filtrado.columns:
+                            valor = df_filtrado[col].iloc[0]
+                            if pd.notna(valor):
+                                rentabilidade_data.append({
+                                    "Indicador": col,
+                                    "Valor": f"{valor:.2%}",
+                                    "Status": "✓"
+                                })
+                            else:
+                                rentabilidade_data.append({
+                                    "Indicador": f"{col}*",
+                                    "Valor": "Não calculado",
+                                    "Status": "✗"
+                                })
+                    
+                    if rentabilidade_data:
+                        rentabilidade_df = pd.DataFrame(rentabilidade_data)
+                        st.dataframe(rentabilidade_df[["Indicador", "Valor"]], use_container_width=True, hide_index=True)
+                    else:
+                        st.warning("Não há dados de rentabilidade disponíveis")
+                
+                with tab2:
+                    st.subheader("Estrutura de Capital")
+                    estrutura_cols = ["Percentual Capital Terceiros", "Percentual Capital Próprio"]
+                    estrutura_data = []
+                    
+                    for col in estrutura_cols:
+                        if col in df_filtrado.columns:
+                            valor = df_filtrado[col].iloc[0]
+                            if pd.notna(valor):
+                                estrutura_data.append({
+                                    "Indicador": col,
+                                    "Valor": f"{valor:.2%}",
+                                    "Status": "✓"
+                                })
+                            else:
+                                estrutura_data.append({
+                                    "Indicador": f"{col}*",
+                                    "Valor": "Não calculado",
+                                    "Status": "✗"
+                                })
+                    
+                    if estrutura_data:
+                        estrutura_df = pd.DataFrame(estrutura_data)
+                        st.dataframe(estrutura_df[["Indicador", "Valor"]], use_container_width=True, hide_index=True)
+                        
+                        # Gráfico de pizza da estrutura de capital (apenas se ambos os valores estiverem disponíveis)
+                        valores_validos = [d for d in estrutura_data if d["Status"] == "✓"]
+                        if len(valores_validos) >= 2:
+                            nomes = ["Capital Terceiros", "Capital Próprio"]
+                            valores = [df_filtrado["Percentual Capital Terceiros"].iloc[0], 
+                                      df_filtrado["Percentual Capital Próprio"].iloc[0]]
+                            
+                            fig_pizza = px.pie(
+                                values=valores,
+                                names=nomes,
+                                title="Composição do Capital"
+                            )
+                            st.plotly_chart(fig_pizza, use_container_width=True)
+                    else:
+                        st.warning("Não há dados de estrutura de capital disponíveis")
+                
+                with tab3:
+                    st.subheader("Custo de Capital")
+                    custo_cols = ["ki", "ke", "wacc"]
+                    custo_data = []
+                    
+                    for col in custo_cols:
+                        if col in df_filtrado.columns:
+                            valor = df_filtrado[col].iloc[0]
+                            if pd.notna(valor):
+                                custo_data.append({
+                                    "Indicador": col,
+                                    "Valor": f"{valor:.2%}",
+                                    "Status": "✓"
+                                })
+                            else:
+                                custo_data.append({
+                                    "Indicador": f"{col}*",
+                                    "Valor": "Não calculado",
+                                    "Status": "✗"
+                                })
+                    
+                    if custo_data:
+                        custo_df = pd.DataFrame(custo_data)
+                        st.dataframe(custo_df[["Indicador", "Valor"]], use_container_width=True, hide_index=True)
+                    else:
+                        st.warning("Não há dados de custo de capital disponíveis")
+                
+                with tab4:
+                    st.subheader("Lucro Econômico")
+                    lucro_cols = ["Lucro Econômico 1", "Lucro Econômico 2", "Lucro Econômico EBITDA"]
+                    lucro_data = []
+                    
+                    for col in lucro_cols:
+                        if col in df_filtrado.columns:
+                            valor = df_filtrado[col].iloc[0]
+                            if pd.notna(valor):
+                                # Converter para milhares (R$ Mil)
+                                valor_mil = valor / 1000
+                                lucro_data.append({
+                                    "Indicador": col,
+                                    "Valor (R$ Mil)": f"R$ {valor_mil:,.0f}",
+                                    "Status": "✓"
+                                })
+                            else:
+                                lucro_data.append({
+                                    "Indicador": f"{col}*",
+                                    "Valor (R$ Mil)": "Não calculado",
+                                    "Status": "✗"
+                                })
+                    
+                    if lucro_data:
+                        lucro_df = pd.DataFrame(lucro_data)
+                        st.dataframe(lucro_df[["Indicador", "Valor (R$ Mil)"]], use_container_width=True, hide_index=True)
+                    else:
+                        st.warning("Não há dados de lucro econômico disponíveis")
+                
+                with tab5:
+                    st.subheader("Dados Financeiros Brutos (R$ Mil)")
+                    dados_brutos = df_filtrado[[
+                        "Receita de Venda de Bens e/ou Serviços",
+                        "Resultado Bruto", 
+                        "Resultado Antes do Resultado Financeiro e dos Tributos",
+                        "Lucro/Prejuízo Consolidado do Período",
+                        "Despesas Financeiras",
+                        "Pagamento de Dividendos",
+                        "Ativo Total",
+                        "Patrimônio Líquido Consolidado",
+                        "Empréstimos e Financiamentos - Circulante",
+                        "Empréstimos e Financiamentos - Não Circulante"
+                    ]].iloc[0]
+                    
+                    # Formatar valores em milhares
+                    dados_formatados = (dados_brutos / 1000).apply(lambda x: f"R$ {x:,.0f}" if pd.notna(x) else "N/A")
+                    st.dataframe(dados_formatados.to_frame("Valor (R$ Mil)"), use_container_width=True)
+            
+            else:
+                st.warning(f"Não há dados disponíveis para {ticker_selecionado} no ano {ano_selecionado}")
+        
+        with tab_evolucao:
+            st.subheader(f"Evolução Temporal - {ticker_selecionado}")
+            
+            if len(df_empresa_todos_anos) > 1:
+                # Gráficos de evolução temporal
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    # Rentabilidade
+                    fig_rentabilidade = go.Figure()
+                    
+                    indicadores_rentabilidade = ['ROE', 'ROA', 'ROI', 'Margem Líquida']
+                    cores = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
+                    
+                    for i, indicador in enumerate(indicadores_rentabilidade):
+                        if indicador in df_empresa_todos_anos.columns:
+                            dados_validos = df_empresa_todos_anos[df_empresa_todos_anos[indicador].notna()]
+                            if not dados_validos.empty:
+                                fig_rentabilidade.add_trace(go.Scatter(
+                                    x=dados_validos['Ano'],
+                                    y=dados_validos[indicador],
+                                    mode='lines+markers',
+                                    name=indicador,
+                                    line=dict(color=cores[i % len(cores)], width=3),
+                                    marker=dict(size=8)
+                                ))
+                    
+                    fig_rentabilidade.update_layout(
+                        title='Evolução da Rentabilidade',
+                        xaxis_title='Ano',
+                        yaxis_title='Percentual',
+                        yaxis_tickformat='.2%',
+                        height=400,
+                        showlegend=True
                     )
-                    st.plotly_chart(fig_pizza, use_container_width=True)
+                    st.plotly_chart(fig_rentabilidade, use_container_width=True)
+                
+                with col2:
+                    # Estrutura de Capital
+                    fig_estrutura = go.Figure()
+                    
+                    indicadores_estrutura = ['Percentual Capital Terceiros', 'Percentual Capital Próprio']
+                    cores_estrutura = ['#e74c3c', '#2ecc71']
+                    
+                    for i, indicador in enumerate(indicadores_estrutura):
+                        if indicador in df_empresa_todos_anos.columns:
+                            dados_validos = df_empresa_todos_anos[df_empresa_todos_anos[indicador].notna()]
+                            if not dados_validos.empty:
+                                fig_estrutura.add_trace(go.Scatter(
+                                    x=dados_validos['Ano'],
+                                    y=dados_validos[indicador],
+                                    mode='lines+markers',
+                                    name=indicador,
+                                    line=dict(color=cores_estrutura[i % len(cores_estrutura)], width=3),
+                                    marker=dict(size=8),
+                                    stackgroup='one' if i == 0 else None
+                                ))
+                    
+                    fig_estrutura.update_layout(
+                        title='Evolução da Estrutura de Capital',
+                        xaxis_title='Ano',
+                        yaxis_title='Percentual',
+                        yaxis_tickformat='.2%',
+                        height=400,
+                        showlegend=True
+                    )
+                    st.plotly_chart(fig_estrutura, use_container_width=True)
+                
+                # Segunda linha de gráficos
+                col3, col4 = st.columns(2)
+                
+                with col3:
+                    # Custo de Capital
+                    fig_custo = go.Figure()
+                    
+                    indicadores_custo = ['ki', 'ke', 'wacc']
+                    nomes_custo = ['Custo da Dívida (ki)', 'Custo do Capital Próprio (ke)', 'WACC']
+                    cores_custo = ['#9b59b6', '#3498db', '#f39c12']
+                    
+                    for i, indicador in enumerate(indicadores_custo):
+                        if indicador in df_empresa_todos_anos.columns:
+                            dados_validos = df_empresa_todos_anos[df_empresa_todos_anos[indicador].notna()]
+                            if not dados_validos.empty:
+                                fig_custo.add_trace(go.Scatter(
+                                    x=dados_validos['Ano'],
+                                    y=dados_validos[indicador],
+                                    mode='lines+markers',
+                                    name=nomes_custo[i],
+                                    line=dict(color=cores_custo[i % len(cores_custo)], width=3),
+                                    marker=dict(size=8)
+                                ))
+                    
+                    fig_custo.update_layout(
+                        title='Evolução do Custo de Capital',
+                        xaxis_title='Ano',
+                        yaxis_title='Percentual',
+                        yaxis_tickformat='.2%',
+                        height=400,
+                        showlegend=True
+                    )
+                    st.plotly_chart(fig_custo, use_container_width=True)
+                
+                with col4:
+                    # Margens
+                    fig_margens = go.Figure()
+                    
+                    indicadores_margens = ['Margem Bruta', 'Margem Operacional', 'Margem Líquida']
+                    cores_margens = ['#16a085', '#27ae60', '#2980b9']
+                    
+                    for i, indicador in enumerate(indicadores_margens):
+                        if indicador in df_empresa_todos_anos.columns:
+                            dados_validos = df_empresa_todos_anos[df_empresa_todos_anos[indicador].notna()]
+                            if not dados_validos.empty:
+                                fig_margens.add_trace(go.Scatter(
+                                    x=dados_validos['Ano'],
+                                    y=dados_validos[indicador],
+                                    mode='lines+markers',
+                                    name=indicador,
+                                    line=dict(color=cores_margens[i % len(cores_margens)], width=3),
+                                    marker=dict(size=8)
+                                ))
+                    
+                    fig_margens.update_layout(
+                        title='Evolução das Margens',
+                        xaxis_title='Ano',
+                        yaxis_title='Percentual',
+                        yaxis_tickformat='.2%',
+                        height=400,
+                        showlegend=True
+                    )
+                    st.plotly_chart(fig_margens, use_container_width=True)
+                
+                # Tabela resumo da evolução
+                st.subheader("📋 Resumo da Evolução - Principais Indicadores")
+                
+                # Selecionar indicadores chave para a tabela
+                indicadores_resumo = ['ROE', 'ROA', 'ROI', 'Margem Líquida', 'wacc', 'Percentual Capital Próprio']
+                df_resumo = df_empresa_todos_anos[['Ano'] + [col for col in indicadores_resumo if col in df_empresa_todos_anos.columns]]
+                
+                # Formatar para porcentagem
+                format_dict = {col: '{:.2%}' for col in df_resumo.columns if col != 'Ano'}
+                st.dataframe(
+                    df_resumo.style.format(format_dict),
+                    use_container_width=True
+                )
+                
             else:
-                st.warning("Não há dados de estrutura de capital disponíveis")
-        
-        with tab3:
-            st.subheader("Custo de Capital")
-            custo_cols = ["ki", "ke", "wacc"]
-            custo_data = []
-            
-            for col in custo_cols:
-                if col in df_filtrado.columns:
-                    valor = df_filtrado[col].iloc[0]
-                    if pd.notna(valor):
-                        custo_data.append({
-                            "Indicador": col,
-                            "Valor": f"{valor:.2%}",
-                            "Status": "✓"
-                        })
-                    else:
-                        custo_data.append({
-                            "Indicador": f"{col}*",
-                            "Valor": "Não calculado",
-                            "Status": "✗"
-                        })
-            
-            if custo_data:
-                custo_df = pd.DataFrame(custo_data)
-                st.dataframe(custo_df[["Indicador", "Valor"]], use_container_width=True, hide_index=True)
-            else:
-                st.warning("Não há dados de custo de capital disponíveis")
-        
-        with tab4:
-            st.subheader("Lucro Econômico")
-            lucro_cols = ["Lucro Econômico 1", "Lucro Econômico 2", "Lucro Econômico EBITDA"]
-            lucro_data = []
-            
-            for col in lucro_cols:
-                if col in df_filtrado.columns:
-                    valor = df_filtrado[col].iloc[0]
-                    if pd.notna(valor):
-                        # Converter para milhares (R$ Mil)
-                        valor_mil = valor / 1000
-                        lucro_data.append({
-                            "Indicador": col,
-                            "Valor (R$ Mil)": f"R$ {valor_mil:,.0f}",
-                            "Status": "✓"
-                        })
-                    else:
-                        lucro_data.append({
-                            "Indicador": f"{col}*",
-                            "Valor (R$ Mil)": "Não calculado",
-                            "Status": "✗"
-                        })
-            
-            if lucro_data:
-                lucro_df = pd.DataFrame(lucro_data)
-                st.dataframe(lucro_df[["Indicador", "Valor (R$ Mil)"]], use_container_width=True, hide_index=True)
-            else:
-                st.warning("Não há dados de lucro econômico disponíveis")
-        
-        with tab5:
-            st.subheader("Dados Financeiros Brutos (R$ Mil)")
-            dados_brutos = df_filtrado[[
-                "Receita de Venda de Bens e/ou Serviços",
-                "Resultado Bruto", 
-                "Resultado Antes do Resultado Financeiro e dos Tributos",
-                "Lucro/Prejuízo Consolidado do Período",
-                "Despesas Financeiras",
-                "Pagamento de Dividendos",
-                "Ativo Total",
-                "Patrimônio Líquido Consolidado",
-                "Empréstimos e Financiamentos - Circulante",
-                "Empréstimos e Financiamentos - Não Circulante"
-            ]].iloc[0]
-            
-            # Formatar valores em milhares
-            dados_formatados = (dados_brutos / 1000).apply(lambda x: f"R$ {x:,.0f}" if pd.notna(x) else "N/A")
-            st.dataframe(dados_formatados.to_frame("Valor (R$ Mil)"), use_container_width=True)
-    
-    else:
-        st.warning(f"Não há dados disponíveis para {ticker_selecionado} no ano {ano_selecionado}")
+                st.info("ℹ️ São necessários dados de múltiplos anos para análise de evolução temporal")
 
 # ==============================
 # TELA - ANÁLISE SETORIAL
 # ==============================
 elif modo_analise == "🏭 Análise Setorial":
-    st.header(f"🏭 Análise Setorial - {setor_selecionado} ({ano_selecionado})")
+    st.header(f"🏭 Análise Setorial - {setor_selecionado}")
     
-    if not df_filtrado.empty:
-        # KPIs do Setor
-        col1, col2, col3, col4 = st.columns(4)
+    if not df_setor_todos_anos.empty:
+        # Abas para análise atual vs evolução temporal
+        tab_atual_setor, tab_evolucao_setor = st.tabs(["📊 Análise do Ano", "📈 Evolução Temporal"])
         
-        with col1:
-            empresas_setor = df_filtrado["Ticker"].nunique()
-            st.metric("Empresas no Setor", empresas_setor)
+        with tab_atual_setor:
+            st.subheader(f"Ano {ano_selecionado}")
+            
+            if not df_filtrado.empty:
+                # KPIs do Setor
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    empresas_setor = df_filtrado["Ticker"].nunique()
+                    st.metric("Empresas no Setor", empresas_setor)
+                
+                with col2:
+                    receita_setor = df_filtrado["Receita de Venda de Bens e/ou Serviços"].sum() / 1e9
+                    st.metric("Receita Total (R$ Bi)", f"R$ {receita_setor:.2f}")
+                
+                with col3:
+                    lucro_setor = df_filtrado["Lucro/Prejuízo Consolidado do Período"].sum() / 1e9
+                    st.metric("Lucro Total (R$ Bi)", f"R$ {lucro_setor:.2f}")
+                
+                with col4:
+                    pl_setor = df_filtrado["Patrimônio Líquido Consolidado"].sum() / 1e9
+                    st.metric("Patrimônio Líquido (R$ Bi)", f"R$ {pl_setor:.2f}")
+                
+                st.divider()
+                
+                # Top empresas do setor por ROE
+                st.subheader("Top 10 Empresas do Setor por ROE")
+                top_roe_setor = df_filtrado[df_filtrado["ROE"].notna()].nlargest(10, "ROE")[["Ticker", "ROE"]]
+                
+                if not top_roe_setor.empty:
+                    fig_roe = px.bar(top_roe_setor, x="Ticker", y="ROE", 
+                                   title="ROE por Empresa no Setor")
+                    st.plotly_chart(fig_roe, use_container_width=True)
+                else:
+                    st.warning("Não há dados de ROE disponíveis para este setor")
+                
+                # Comparativo de estrutura de capital no setor
+                st.subheader("Estrutura de Capital no Setor")
+                estrutura_setor = df_filtrado[df_filtrado["Percentual Capital Próprio"].notna()].nlargest(15, "Patrimônio Líquido Consolidado")
+                
+                if not estrutura_setor.empty:
+                    fig_estrutura = px.bar(estrutura_setor, 
+                                         x="Ticker", 
+                                         y=["Percentual Capital Terceiros", "Percentual Capital Próprio"],
+                                         title="Estrutura de Capital das Principais Empresas do Setor",
+                                         barmode='stack')
+                    st.plotly_chart(fig_estrutura, use_container_width=True)
+                else:
+                    st.warning("Não há dados de estrutura de capital disponíveis para este setor")
+                
+                # Ranking de rentabilidade no setor
+                st.subheader("Ranking de Rentabilidade no Setor")
+                rentabilidade_setor = df_filtrado[
+                    df_filtrado["ROE"].notna() & 
+                    df_filtrado["ROA"].notna() & 
+                    df_filtrado["ROI"].notna()
+                ].nlargest(15, "ROE")[["Ticker", "ROE", "ROA", "ROI", "Margem Líquida"]]
+                
+                if not rentabilidade_setor.empty:
+                    format_dict = {
+                        'ROE': '{:.2%}',
+                        'ROA': '{:.2%}', 
+                        'ROI': '{:.2%}',
+                        'Margem Líquida': '{:.2%}'
+                    }
+                    st.dataframe(
+                        rentabilidade_setor.style.format(format_dict),
+                        use_container_width=True
+                    )
+                else:
+                    st.warning("Não há dados de rentabilidade suficientes para exibir o ranking")
+            
+            else:
+                st.warning(f"Não há dados disponíveis para o setor {setor_selecionado} no ano {ano_selecionado}")
         
-        with col2:
-            receita_setor = df_filtrado["Receita de Venda de Bens e/ou Serviços"].sum() / 1e9
-            st.metric("Receita Total (R$ Bi)", f"R$ {receita_setor:.2f}")
-        
-        with col3:
-            lucro_setor = df_filtrado["Lucro/Prejuízo Consolidado do Período"].sum() / 1e9
-            st.metric("Lucro Total (R$ Bi)", f"R$ {lucro_setor:.2f}")
-        
-        with col4:
-            pl_setor = df_filtrado["Patrimônio Líquido Consolidado"].sum() / 1e9
-            st.metric("Patrimônio Líquido (R$ Bi)", f"R$ {pl_setor:.2f}")
-        
-        st.divider()
-        
-        # Top empresas do setor por ROE
-        st.subheader("Top 10 Empresas do Setor por ROE")
-        top_roe_setor = df_filtrado[df_filtrado["ROE"].notna()].nlargest(10, "ROE")[["Ticker", "ROE"]]
-        
-        if not top_roe_setor.empty:
-            fig_roe = px.bar(top_roe_setor, x="Ticker", y="ROE", 
-                           title="ROE por Empresa no Setor")
-            st.plotly_chart(fig_roe, use_container_width=True)
-        else:
-            st.warning("Não há dados de ROE disponíveis para este setor")
-        
-        # Comparativo de estrutura de capital no setor
-        st.subheader("Estrutura de Capital no Setor")
-        estrutura_setor = df_filtrado[df_filtrado["Percentual Capital Próprio"].notna()].nlargest(15, "Patrimônio Líquido Consolidado")
-        
-        if not estrutura_setor.empty:
-            fig_estrutura = px.bar(estrutura_setor, 
-                                 x="Ticker", 
-                                 y=["Percentual Capital Terceiros", "Percentual Capital Próprio"],
-                                 title="Estrutura de Capital das Principais Empresas do Setor",
-                                 barmode='stack')
-            st.plotly_chart(fig_estrutura, use_container_width=True)
-        else:
-            st.warning("Não há dados de estrutura de capital disponíveis para este setor")
-        
-        # Ranking de rentabilidade no setor
-        st.subheader("Ranking de Rentabilidade no Setor")
-        rentabilidade_setor = df_filtrado[
-            df_filtrado["ROE"].notna() & 
-            df_filtrado["ROA"].notna() & 
-            df_filtrado["ROI"].notna()
-        ].nlargest(15, "ROE")[["Ticker", "ROE", "ROA", "ROI", "Margem Líquida"]]
-        
-        if not rentabilidade_setor.empty:
-            format_dict = {
-                'ROE': '{:.2%}',
-                'ROA': '{:.2%}', 
-                'ROI': '{:.2%}',
-                'Margem Líquida': '{:.2%}'
-            }
-            st.dataframe(
-                rentabilidade_setor.style.format(format_dict),
-                use_container_width=True
-            )
-        else:
-            st.warning("Não há dados de rentabilidade suficientes para exibir o ranking")
-    
-    else:
-        st.warning(f"Não há dados disponíveis para o setor {setor_selecionado} no ano {ano_selecionado}")
+        with tab_evolucao_setor:
+            st.subheader(f"Evolução Temporal do Setor - {setor_selecionado}")
+            
+            if len(df_setor_todos_anos['Ano'].unique()) > 1:
+                # Calcular médias do setor por ano
+                indicadores_setor = ['ROE', 'ROA', 'ROI', 'Margem Líquida', 'wacc', 'Percentual Capital Próprio']
+                
+                # Agrupar por ano e calcular mediana (menos sensível a outliers)
+                df_setor_evolucao = df_setor_todos_anos.groupby('Ano')[indicadores_setor].median().reset_index()
+                
+                # Gráficos de evolução do setor
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    # Rentabilidade do setor
+                    fig_setor_rent = go.Figure()
+                    
+                    indicadores_rent_setor = ['ROE', 'ROA', 'ROI']
+                    cores_setor = ['#1f77b4', '#ff7f0e', '#2ca02c']
+                    
+                    for i, indicador in enumerate(indicadores_rent_setor):
+                        if indicador in df_setor_evolucao.columns:
+                            dados_validos = df_setor_evolucao[df_setor_evolucao[indicador].notna()]
+                            if not dados_validos.empty:
+                                fig_setor_rent.add_trace(go.Scatter(
+                                    x=dados_validos['Ano'],
+                                    y=dados_validos[indicador],
+                                    mode='lines+markers',
+                                    name=indicador,
+                                    line=dict(color=cores_setor[i % len(cores_setor)], width=3),
+                                    marker=dict(size=8)
+                                ))
+                    
+                    fig_setor_rent.update_layout(
+                        title='Evolução da Rentabilidade do Setor (Mediana)',
+                        xaxis_title='Ano',
+                        yaxis_title='Percentual',
+                        yaxis_tickformat='.2%',
+                        height=400,
+                        showlegend=True
+                    )
+                    st.plotly_chart(fig_setor_rent, use_container_width=True)
+                
+                with col2:
+                    # Estrutura e custo do setor
+                    fig_setor_estrutura = go.Figure()
+                    
+                    indicadores_estrutura_setor = ['Percentual Capital Próprio', 'wacc']
+                    nomes_estrutura = ['Capital Próprio (%)', 'WACC']
+                    cores_estrutura_setor = ['#2ecc71', '#f39c12']
+                    
+                    for i, indicador in enumerate(indicadores_estrutura_setor):
+                        if indicador in df_setor_evolucao.columns:
+                            dados_validos = df_setor_evolucao[df_setor_evolucao[indicador].notna()]
+                            if not dados_validos.empty:
+                                fig_setor_estrutura.add_trace(go.Scatter(
+                                    x=dados_validos['Ano'],
+                                    y=dados_validos[indicador],
+                                    mode='lines+markers',
+                                    name=nomes_estrutura[i],
+                                    line=dict(color=cores_estrutura_setor[i % len(cores_estrutura_setor)], width=3),
+                                    marker=dict(size=8)
+                                ))
+                    
+                    fig_setor_estrutura.update_layout(
+                        title='Evolução da Estrutura e Custo de Capital (Mediana)',
+                        xaxis_title='Ano',
+                        yaxis_title='Percentual',
+                        yaxis_tickformat='.2%',
+                        height=400,
+                        showlegend=True
+                    )
+                    st.plotly_chart(fig_setor_estrutura, use_container_width=True)
+                
+                # Tabela resumo da evolução do setor
+                st.subheader("📋 Resumo da Evolução do Setor - Principais Indicadores")
+                
+                # Formatar para porcentagem
+                format_dict = {col: '{:.2%}' for col in df_setor_evolucao.columns if col != 'Ano'}
+                st.dataframe(
+                    df_setor_evolucao.style.format(format_dict),
+                    use_container_width=True
+                )
+                
+                # Dispersão do setor
+                st.subheader("📊 Dispersão de Rentabilidade no Setor")
+                
+                if ano_selecionado in df_setor_todos_anos['Ano'].values:
+                    df_setor_ano = df_setor_todos_anos[df_setor_todos_anos['Ano'] == ano_selecionado]
+                    
+                    if not df_setor_ano.empty and 'ROE' in df_setor_ano.columns:
+                        fig_dispersao = px.box(df_setor_ano, y='ROE', 
+                                             title=f'Distribuição do ROE no Setor - {ano_selecionado}')
+                        fig_dispersao.update_layout(yaxis_tickformat='.2%')
+                        st.plotly_chart(fig_dispersao, use_container_width=True)
+                
+            else:
+                st.info("ℹ️ São necessários dados de múltiplos anos para análise de evolução temporal do setor")
 
 # ==============================
 # SEÇÃO DE FÓRMULAS DOS INDICADORES
@@ -790,7 +1028,7 @@ formulas = {
     "ke (Custo do Capital Próprio)": "Dividendos Pagos ÷ Patrimônio Líquido Médio",
     "WACC": "(ki × % Capital Terceiros) + (ke × % Capital Próprio)",
     "Lucro Econômico 1": "(ROI - WACC) × Investimento Médio",
-    "Lucro Econômico 2": "Resultado Operacional - (WACC × Investimento Médio)",  # CORRIGIDO
+    "Lucro Econômico 2": "Resultado Operacional - (WACC × Investimento Médio)",
     "EBITDA": "Resultado Antes dos Tributos + Despesas Financeiras",
     "ROI EBITDA": "EBITDA ÷ Investimento Médio",
     "Percentual Capital Terceiros": "(Passivo Circulante + Não Circulante) ÷ Total Passivo",
@@ -840,6 +1078,10 @@ with st.sidebar.expander("💡 Metodologia livro Vellani (2024)"):
     - Lucro Econômico 2 = Resultado Operacional - (WACC × Investimento Médio)
     - **RESULTADO:** Lucro Econômico 1 = Lucro Econômico 2
 
+    **Novos Gráficos de Evolução Temporal:**
+    - Análise histórica dos indicadores por empresa
+    - Evolução setorial ao longo dos anos
+    - Comparativos de tendências
     """)
 
 # FIM DO SCRIPT
