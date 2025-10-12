@@ -829,20 +829,18 @@ st.caption(f"📊 Dashboard CVM - Indicadores Financeiros | Dados atualizados pa
 # Adicionar informações sobre os cálculos
 with st.sidebar.expander("💡 Metodologia livro Vellani (2024)"):
     st.write("""
-    **CORREÇÕES APLICADAS:**
+    **Cálculos Verificados:**
+    
+    **VERIFICAÇÃO:**
+    - Se Lucro Econômico 1 ≠ Lucro Econômico 2, há erro nos cálculos
+    - Diferença deve ser zero 
 
-    ✅ **Lucro Econômico 2:**
-       - Fórmula: Resultado Operacional - (WACC × Investimento Médio)
-
-    ✅ **Consistência Garantida:**
+        ✅ **Consistência Garantida:**
     - ROI = Resultado Operacional ÷ Investimento Médio
     - Lucro Econômico 1 = (ROI - WACC) × Investimento Médio
     - Lucro Econômico 2 = Resultado Operacional - (WACC × Investimento Médio)
     - **RESULTADO:** Lucro Econômico 1 = Lucro Econômico 2
 
-    **VERIFICAÇÃO:**
-    - Se Lucro Econômico 1 ≠ Lucro Econômico 2, há erro nos cálculos
-    - Diferença deve ser zero 
     """)
 
 # FIM DO SCRIPT
