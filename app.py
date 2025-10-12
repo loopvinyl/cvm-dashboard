@@ -190,18 +190,27 @@ def load_data():
     # EBITDA CORRIGIDO - USANDO SOMENTE 'Depreciação e amortização'
     # =============================================================
     
-    # Verificar se a coluna consolidada existe
-    tem_depreciacao_amortizacao_consolidada = 'Depreciação e amortização' in df.columns
+    # Verificar se a coluna consolidada existe - CORREÇÃO: verificação mais robusta
+    colunas_existentes = [col.lower().strip() for col in df.columns]
+    tem_depreciacao_amortizacao_consolidada = any('depreciação' in col and 'amortização' in col for col in colunas_existentes)
 
-    if tem_depreciacao_amortizacao_consolidada:
+    # Encontrar o nome exato da coluna
+    nome_coluna_da = None
+    for col in df.columns:
+        if 'depreciação' in col.lower() and 'amortização' in col.lower():
+            nome_coluna_da = col
+            break
+
+    if nome_coluna_da:
         # Usar APENAS a coluna consolidada 'Depreciação e amortização'
         # CORREÇÃO: usar valor absoluto para garantir que estamos adicionando despesas não-caixa
-        depreciacao_amortizacao = abs(df["Depreciação e amortização"].fillna(0))
+        depreciacao_amortizacao = abs(df[nome_coluna_da].fillna(0))
         df["EBITDA"] = np.where(
             df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna(),
             df["Resultado Antes do Resultado Financeiro e dos Tributos"] + depreciacao_amortizacao,
             np.nan
         )
+        st.success(f"✅ EBITDA calculado usando a coluna: '{nome_coluna_da}'")
     else:
         # Se não temos dados de depreciação/amortização consolidada, usar aproximação
         df["EBITDA"] = df["Resultado Antes do Resultado Financeiro e dos Tributos"]
@@ -576,11 +585,15 @@ elif modo_analise == "📈 Visão por Empresa":
                         # Detalhamento do cálculo
                         st.subheader("📊 Detalhamento do Cálculo do EBITDA")
                         
-                        # Verificar se a coluna consolidada existe
-                        tem_depreciacao_amortizacao_consolidada = 'Depreciação e amortização' in df_filtrado.columns and pd.notna(df_filtrado['Depreciação e amortização'].iloc[0])
+                        # Encontrar o nome exato da coluna no DataFrame filtrado
+                        nome_coluna_da_filtrado = None
+                        for col in df_filtrado.columns:
+                            if 'depreciação' in col.lower() and 'amortização' in col.lower():
+                                nome_coluna_da_filtrado = col
+                                break
 
-                        if tem_depreciacao_amortizacao_consolidada:
-                            depreciacao_amortizacao = df_filtrado['Depreciação e amortização'].iloc[0]
+                        if nome_coluna_da_filtrado and pd.notna(df_filtrado[nome_coluna_da_filtrado].iloc[0]):
+                            depreciacao_amortizacao = df_filtrado[nome_coluna_da_filtrado].iloc[0]
                             depreciacao_amortizacao_abs = abs(depreciacao_amortizacao)
                             st.write(f"**Resultado Operacional:** R$ {resultado_operacional/1000:,.0f} mil")
                             st.write(f"**Depreciação e Amortização:** R$ {depreciacao_amortizacao_abs/1000:,.0f} mil")
@@ -705,9 +718,15 @@ elif modo_analise == "📈 Visão por Empresa":
                         "Empréstimos e Financiamentos - Não Circulante"
                     ]
                     
-                    # Adicionar APENAS a coluna consolidada de depreciação/amortização
-                    if 'Depreciação e amortização' in df_filtrado.columns:
-                        dados_brutos_cols.append('Depreciação e amortização')
+                    # Adicionar a coluna de depreciação/amortização se existir
+                    nome_coluna_da_brutos = None
+                    for col in df_filtrado.columns:
+                        if 'depreciação' in col.lower() and 'amortização' in col.lower():
+                            nome_coluna_da_brutos = col
+                            break
+
+                    if nome_coluna_da_brutos:
+                        dados_brutos_cols.append(nome_coluna_da_brutos)
                     
                     dados_brutos = {}
                     for col in dados_brutos_cols:
@@ -1245,6 +1264,7 @@ with st.sidebar.expander("💡 Metodologia livro Vellani (2024)"):
     - **EXCLUSIVAMENTE** usando a coluna 'Depreciação e amortização'
     - **CORREÇÃO:** Usa valores absolutos para depreciação/amortização para garantir cálculo correto
     - **FÓRMULA:** EBITDA = Resultado Operacional + |Depreciação e Amortização|
+    - **BUSCA ROBUSTA:** Encontra automaticamente a coluna mesmo com pequenas variações no nome
 
     **Dataset: dff_2010_2024**
     - Período: 2010-2024 (15 anos)
