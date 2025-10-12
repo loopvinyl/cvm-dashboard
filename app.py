@@ -819,7 +819,7 @@ st.sidebar.divider()
 st.sidebar.header("ℹ️ Informações")
 st.sidebar.info(
     "Este dashboard apresenta os principais indicadores financeiros "
-    "calculados conforme metodologia Vellani (2024)."
+    "calculados conforme metodologia Vellani (2024)"
 )
 
 # Rodapé
