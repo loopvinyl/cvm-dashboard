@@ -187,40 +187,40 @@ def load_data():
     )
 
     # =============================================================
-    # EBITDA CORRIGIDO - BASEADO NO RELATÓRIO dff_2010_2024
-    # =============================================================
-    
-    # Hierarquia de busca baseada no relatório
-    tem_depreciacao_amortizacao_consolidada = 'Depreciação e amortização' in df.columns
-    tem_depreciacao_separada = 'Depreciação' in df.columns
-    tem_amortizacao_separada = 'Amortização' in df.columns
-    
-    if tem_depreciacao_amortizacao_consolidada:
-        # Usar a coluna consolidada 'Depreciação e amortização' (nome correto do relatório)
-        df["EBITDA"] = np.where(
-            df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna(),
-            df["Resultado Antes do Resultado Financeiro e dos Tributos"] + df["Depreciação e amortização"].fillna(0),
-            np.nan
-        )
-    elif tem_depreciacao_separada and tem_amortizacao_separada:
-        # Calcular a soma de Depreciação + Amortização
-        depreciacao_amortizacao = df['Depreciação'].fillna(0) + df['Amortização'].fillna(0)
-        df["EBITDA"] = np.where(
-            df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna(),
-            df["Resultado Antes do Resultado Financeiro e dos Tributos"] + depreciacao_amortizacao,
-            np.nan
-        )
-    elif tem_depreciacao_separada:
-        # Usar apenas Depreciação
-        df["EBITDA"] = np.where(
-            df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna(),
-            df["Resultado Antes do Resultado Financeiro e dos Tributos"] + df['Depreciação'].fillna(0),
-            np.nan
-        )
-    else:
-        # Se não temos dados de depreciação, usar aproximação
-        df["EBITDA"] = df["Resultado Antes do Resultado Financeiro e dos Tributos"]
-        st.warning("⚠️ Dados de Depreciação/Amortização não encontrados. EBITDA calculado como aproximação do Resultado Operacional.")
+# EBITDA CORRIGIDO - BASEADO NO RELATÓRIO dff_2010_2024
+# =============================================================
+
+# Hierarquia de busca baseada no relatório
+tem_depreciacao_amortizacao_consolidada = 'Depreciação e amortização' in df.columns
+tem_depreciacao_separada = 'Depreciação' in df.columns
+tem_amortizacao_separada = 'Amortização' in df.columns
+
+if tem_depreciacao_amortizacao_consolidada:
+    # CORREÇÃO: Subtrair a depreciação/amortização (são despesas)
+    df["EBITDA"] = np.where(
+        df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna(),
+        df["Resultado Antes do Resultado Financeiro e dos Tributos"] - df["Depreciação e amortização"].fillna(0),
+        np.nan
+    )
+elif tem_depreciacao_separada and tem_amortizacao_separada:
+    # CORREÇÃO: Subtrair a soma de Depreciação + Amortização
+    depreciacao_amortizacao = df['Depreciação'].fillna(0) + df['Amortização'].fillna(0)
+    df["EBITDA"] = np.where(
+        df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna(),
+        df["Resultado Antes do Resultado Financeiro e dos Tributos"] - depreciacao_amortizacao,
+        np.nan
+    )
+elif tem_depreciacao_separada:
+    # CORREÇÃO: Subtrair apenas Depreciação
+    df["EBITDA"] = np.where(
+        df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna(),
+        df["Resultado Antes do Resultado Financeiro e dos Tributos"] - df['Depreciação'].fillna(0),
+        np.nan
+    )
+else:
+    # Se não temos dados de depreciação, usar aproximação
+    df["EBITDA"] = df["Resultado Antes do Resultado Financeiro e dos Tributos"]
+    st.warning("⚠️ Dados de Depreciação/Amortização não encontrados. EBITDA calculado como aproximação do Resultado Operacional.")
 
     # =============================================================
     # LUCRO ECONÔMICO - CORRIGIDOS CONFORME VELLANI
@@ -596,31 +596,32 @@ elif modo_analise == "📈 Visão por Empresa":
                         tem_depreciacao_separada = 'Depreciação' in df_filtrado.columns and pd.notna(df_filtrado['Depreciação'].iloc[0])
                         tem_amortizacao_separada = 'Amortização' in df_filtrado.columns and pd.notna(df_filtrado['Amortização'].iloc[0])
                         
-                        if tem_depreciacao_amortizacao_consolidada:
-                            depreciacao_amortizacao = df_filtrado['Depreciação e amortização'].iloc[0]
-                            st.write(f"**Resultado Operacional:** R$ {resultado_operacional/1000:,.0f} mil")
-                            st.write(f"**Depreciação e Amortização:** R$ {depreciacao_amortizacao/1000:,.0f} mil")
-                            st.write(f"**EBITDA = Resultado Operacional + Depreciação e Amortização**")
-                            st.write(f"**EBITDA =** R$ {resultado_operacional/1000:,.0f} mil + R$ {depreciacao_amortizacao/1000:,.0f} mil = **R$ {ebitda_valor/1000:,.0f} mil**")
-                        
-                        elif tem_depreciacao_separada and tem_amortizacao_separada:
-                            depreciacao = df_filtrado['Depreciação'].iloc[0]
-                            amortizacao = df_filtrado['Amortização'].iloc[0]
-                            total_da = depreciacao + amortizacao
-                            st.write(f"**Resultado Operacional:** R$ {resultado_operacional/1000:,.0f} mil")
-                            st.write(f"**Depreciação:** R$ {depreciacao/1000:,.0f} mil")
-                            st.write(f"**Amortização:** R$ {amortizacao/1000:,.0f} mil")
-                            st.write(f"**Depreciação + Amortização:** R$ {total_da/1000:,.0f} mil")
-                            st.write(f"**EBITDA = Resultado Operacional + (Depreciação + Amortização)**")
-                            st.write(f"**EBITDA =** R$ {resultado_operacional/1000:,.0f} mil + R$ {total_da/1000:,.0f} mil = **R$ {ebitda_valor/1000:,.0f} mil**")
-                        
-                        elif tem_depreciacao_separada:
-                            depreciacao = df_filtrado['Depreciação'].iloc[0]
-                            st.write(f"**Resultado Operacional:** R$ {resultado_operacional/1000:,.0f} mil")
-                            st.write(f"**Depreciação:** R$ {depreciacao/1000:,.0f} mil")
-                            st.write(f"**EBITDA = Resultado Operacional + Depreciação**")
-                            st.write(f"**EBITDA =** R$ {resultado_operacional/1000:,.0f} mil + R$ {depreciacao/1000:,.0f} mil = **R$ {ebitda_valor/1000:,.0f} mil**")
-                        
+                        # No detalhamento do cálculo do EBITDA (dentro da tab2), substitua as fórmulas:
+
+if tem_depreciacao_amortizacao_consolidada:
+    depreciacao_amortizacao = df_filtrado['Depreciação e amortização'].iloc[0]
+    st.write(f"**Resultado Operacional:** R$ {resultado_operacional/1000:,.0f} mil")
+    st.write(f"**Depreciação e Amortização:** R$ {depreciacao_amortizacao/1000:,.0f} mil")
+    st.write(f"**EBITDA = Resultado Operacional - Depreciação e Amortização**")
+    st.write(f"**EBITDA =** R$ {resultado_operacional/1000:,.0f} mil - R$ {abs(depreciacao_amortizacao)/1000:,.0f} mil = **R$ {ebitda_valor/1000:,.0f} mil**")
+
+elif tem_depreciacao_separada and tem_amortizacao_separada:
+    depreciacao = df_filtrado['Depreciação'].iloc[0]
+    amortizacao = df_filtrado['Amortização'].iloc[0]
+    total_da = depreciacao + amortizacao
+    st.write(f"**Resultado Operacional:** R$ {resultado_operacional/1000:,.0f} mil")
+    st.write(f"**Depreciação:** R$ {depreciacao/1000:,.0f} mil")
+    st.write(f"**Amortização:** R$ {amortizacao/1000:,.0f} mil")
+    st.write(f"**Depreciação + Amortização:** R$ {total_da/1000:,.0f} mil")
+    st.write(f"**EBITDA = Resultado Operacional - (Depreciação + Amortização)**")
+    st.write(f"**EBITDA =** R$ {resultado_operacional/1000:,.0f} mil - R$ {abs(total_da)/1000:,.0f} mil = **R$ {ebitda_valor/1000:,.0f} mil**")
+
+elif tem_depreciacao_separada:
+    depreciacao = df_filtrado['Depreciação'].iloc[0]
+    st.write(f"**Resultado Operacional:** R$ {resultado_operacional/1000:,.0f} mil")
+    st.write(f"**Depreciação:** R$ {depreciacao/1000:,.0f} mil")
+    st.write(f"**EBITDA = Resultado Operacional - Depreciação**")
+    st.write(f"**EBITDA =** R$ {resultado_operacional/1000:,.0f} mil - R$ {abs(depreciacao)/1000:,.0f} mil = **R$ {ebitda_valor/1000:,.0f} mil**")
                         else:
                             st.info("ℹ️ Dados de Depreciação/Amortização não disponíveis. EBITDA calculado como aproximação do Resultado Operacional.")
                             st.write(f"**EBITDA ≈ Resultado Operacional = R$ {ebitda_valor/1000:,.0f} mil**")
