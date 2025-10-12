@@ -819,8 +819,7 @@ st.sidebar.divider()
 st.sidebar.header("ℹ️ Informações")
 st.sidebar.info(
     "Este dashboard apresenta os principais indicadores financeiros "
-    "calculados conforme metodologia da aba 'Indicadores' do Excel original. "
-    "Os dados são provenientes das demonstrações financeiras consolidadas."
+    "calculados conforme metodologia Vellani (2024)."
 )
 
 # Rodapé
