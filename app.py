@@ -776,7 +776,7 @@ elif modo_analise == "🏭 Análise Setorial":
 # SEÇÃO DE FÓRMULAS DOS INDICADORES
 # ==============================
 st.divider()
-st.header("📚 Fórmulas dos Indicadores (Versão Corrigida)")
+st.header("📚 Fórmulas dos Indicadores (VELLANI, 2024)")
 
 formulas = {
     "ROE (Return on Equity)": "Lucro Líquido ÷ Patrimônio Líquido Médio",
@@ -831,9 +831,8 @@ with st.sidebar.expander("💡 Metodologia livro Vellani (2024)"):
     st.write("""
     **CORREÇÕES APLICADAS:**
 
-    ✅ **Lucro Econômico 2 Corrigido:**
-    - Fórmula anterior: Lucro Líquido - (WACC × Investimento Médio)
-    - Fórmula corrigida: Resultado Operacional - (WACC × Investimento Médio)
+    ✅ **Lucro Econômico 2:**
+       - Fórmula: Resultado Operacional - (WACC × Investimento Médio)
 
     ✅ **Consistência Garantida:**
     - ROI = Resultado Operacional ÷ Investimento Médio
@@ -843,7 +842,7 @@ with st.sidebar.expander("💡 Metodologia livro Vellani (2024)"):
 
     **VERIFICAÇÃO:**
     - Se Lucro Econômico 1 ≠ Lucro Econômico 2, há erro nos cálculos
-    - Diferença deve ser próxima de zero (dentro da tolerância)
+    - Diferença deve ser zero 
     """)
 
 # FIM DO SCRIPT
