@@ -20,9 +20,9 @@ st.title("📊 Dashboard CVM - Análise de Indicadores Financeiros")
 def load_data():
     # Procurar automaticamente o arquivo em locais possíveis
     possible_paths = [
-        "/content/data_frame.xlsx",   # Google Colab
-        "data_frame.xlsx",            # mesma pasta do app
-        "./data/data_frame.xlsx"      # subpasta data/
+        "/content/dff_2010_2024.xlsx",   # Google Colab
+        "dff_2010_2024.xlsx",            # mesma pasta do app
+        "./data/dff_2010_2024.xlsx"      # subpasta data/
     ]
     data_path = None
     for path in possible_paths:
@@ -32,9 +32,9 @@ def load_data():
 
     if data_path is None:
         st.error(
-            "❌ Arquivo 'data_frame.xlsx' não encontrado.\n\n"
+            "❌ Arquivo 'dff_2010_2024.xlsx' não encontrado.\n\n"
             "Coloque o arquivo na mesma pasta do app ou em /content/ (se estiver no Colab),\n"
-            "ou salve em ./data/data_frame.xlsx.\n\n"
+            "ou salve em ./data/dff_2010_2024.xlsx.\n\n"
             "Caminhos verificados:\n- " + "\n- ".join(possible_paths)
         )
         st.stop()
