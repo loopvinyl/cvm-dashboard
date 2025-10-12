@@ -832,11 +832,9 @@ with st.sidebar.expander("💡 Metodologia livro Vellani (2024)"):
     **Cálculos Verificados:**
     
     **VERIFICAÇÃO:**
-    - Se Lucro Econômico 1 ≠ Lucro Econômico 2, há erro nos cálculos
-    - Diferença deve ser zero, isto é,  
-    Lucro Econômico 1 IGUAL ao Lucro Econômico 2
-
-        ✅ **Consistência Garantida:**
+    - Lucro Econômico 1 IGUAL ao Lucro Econômico 2 
+    
+     **Consistência Garantida:**
     - ROI = Resultado Operacional ÷ Investimento Médio
     - Lucro Econômico 1 = (ROI - WACC) × Investimento Médio
     - Lucro Econômico 2 = Resultado Operacional - (WACC × Investimento Médio)
