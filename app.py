@@ -1,5 +1,5 @@
 # ==============================================================
-# 📊 DASHBOARD CVM - Indicadores Financeiros (VERSÃO CORRIGIDA - VALORES EM R$ MIL)
+# 📊 DASHBOARD CVM - Indicadores Financeiros (VERSÃO COMPLETA COM VALUATION)
 # ==============================================================
 import streamlit as st
 import pandas as pd
@@ -8,6 +8,8 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import numpy as np
 import os
+import yfinance as yf
+from datetime import datetime
 
 # ==============================
 # CONFIGURAÇÕES INICIAIS
@@ -251,6 +253,84 @@ def load_data():
     )
 
     return df
+
+# ==============================
+# FUNÇÃO PARA VALUATION POR EBITDA/SELIC
+# ==============================
+def calcular_valuation_ebitda_selic(ebitda, selic_percentual=15):
+    """
+    Calcula o valuation da empresa usando método EBITDA/SELIC
+    
+    Fórmula: Valor da Empresa = EBITDA ÷ (SELIC/100)
+    """
+    if ebitda and ebitda > 0:
+        valor_empresa = ebitda / (selic_percentual / 100)
+        return valor_empresa
+    return None
+
+def buscar_cotacao_atual(ticker):
+    """
+    Busca a cotação atual do ticker no Yahoo Finance
+    """
+    try:
+        # Adiciona .SA para ações brasileiras
+        ticker_yf = f"{ticker}.SA"
+        acao = yf.Ticker(ticker_yf)
+        info = acao.info
+        
+        cotacao = info.get('regularMarketPrice') or info.get('currentPrice')
+        if cotacao:
+            return {
+                'cotacao': cotacao,
+                'moeda': info.get('currency', 'BRL'),
+                'nome': info.get('longName', ticker),
+                'setor': info.get('sector', 'N/A'),
+                'industria': info.get('industry', 'N/A'),
+                'market_cap': info.get('marketCap'),
+                'volume': info.get('volume'),
+                'data_atualizacao': datetime.now().strftime("%d/%m/%Y %H:%M")
+            }
+    except Exception as e:
+        st.warning(f"⚠️ Não foi possível buscar cotação para {ticker}: {str(e)}")
+    
+    return None
+
+def criar_grafico_comparativo(preco_calculado, cotacao_atual, ticker):
+    """
+    Cria gráfico bullet chart comparativo entre preço calculado e cotação atual
+    """
+    fig = go.Figure()
+    
+    # Definir range do gráfico
+    max_val = max(preco_calculado, cotacao_atual) * 1.3
+    min_val = min(preco_calculado, cotacao_atual) * 0.7
+    
+    # Adicionar barra do preço calculado
+    fig.add_trace(go.Indicator(
+        mode = "number+gauge+delta",
+        value = cotacao_atual,
+        delta = {'reference': preco_calculado, 'relative': True},
+        domain = {'x': [0.1, 1], 'y': [0.1, 0.9]},
+        title = {'text': f"💰 {ticker} - Valuation vs Cotação"},
+        gauge = {
+            'shape': "bullet",
+            'axis': {'range': [min_val, max_val]},
+            'threshold': {
+                'line': {'color': "red", 'width': 2},
+                'thickness': 0.75,
+                'value': preco_calculado},
+            'steps': [
+                {'range': [min_val, preco_calculado], 'color': "lightgray"},
+                {'range': [preco_calculado, max_val], 'color': "lightblue"}],
+            'bar': {'color': "darkblue", 'thickness': 0.5}}
+    ))
+    
+    fig.update_layout(
+        height=200,
+        margin=dict(l=50, r=50, t=50, b=50)
+    )
+    
+    return fig
 
 # Carregar dados
 df = load_data()
@@ -606,6 +686,142 @@ elif modo_analise == "📈 Visão por Empresa":
                         else:
                             st.info("ℹ️ Dados de Depreciação/Amortização não disponíveis. EBITDA calculado como aproximação do Resultado Operacional.")
                             st.write(f"**EBITDA ≈ Resultado Operacional = R$ {ebitda_valor:,.0f} mil**")
+                        
+                        # =============================================================
+                        # 🏦 NOVA SEÇÃO: VALUATION POR EBITDA/SELIC
+                        # =============================================================
+                        st.divider()
+                        st.subheader("🏦 Valuation por EBITDA/SELIC")
+                        
+                        # Configuração da SELIC
+                        col_selic1, col_selic2 = st.columns([2, 1])
+                        with col_selic1:
+                            st.write("**Configuração da Taxa SELIC:**")
+                        with col_selic2:
+                            selic_percentual = st.number_input(
+                                "SELIC (%)",
+                                min_value=0.1,
+                                max_value=30.0,
+                                value=15.0,
+                                step=0.1,
+                                help="Taxa SELIC atual para cálculo do valuation"
+                            )
+                        
+                        # Cálculo do Valuation
+                        valor_empresa = calcular_valuation_ebitda_selic(ebitda_valor, selic_percentual)
+                        
+                        if valor_empresa:
+                            # Buscar cotação atual
+                            dados_cotacao = buscar_cotacao_atual(ticker_selecionado)
+                            
+                            # Exibir resultados do valuation
+                            col_val1, col_val2, col_val3 = st.columns(3)
+                            
+                            with col_val1:
+                                st.metric(
+                                    "Valor da Empresa (EV)",
+                                    f"R$ {valor_empresa:,.0f} mil",
+                                    help="EV = EBITDA ÷ (SELIC/100)"
+                                )
+                            
+                            with col_val2:
+                                # Converter para milhões para melhor visualização
+                                valor_empresa_milhoes = valor_empresa / 1e3
+                                st.metric(
+                                    "Valor da Empresa (R$ Mi)",
+                                    f"R$ {valor_empresa_milhoes:,.0f}",
+                                    help="Valor em milhões de reais"
+                                )
+                            
+                            with col_val3:
+                                st.metric(
+                                    "EBITDA/SELIC",
+                                    f"{ebitda_valor:,.0f} ÷ {selic_percentual}%",
+                                    help="Fórmula de cálculo"
+                                )
+                            
+                            # Fórmula detalhada
+                            st.info(f"""
+                            **📊 Fórmula do Valuation:**
+                            ```
+                            Valor da Empresa = EBITDA ÷ (SELIC/100)
+                            Valor da Empresa = R$ {ebitda_valor:,.0f} mil ÷ ({selic_percentual}%/100)
+                            Valor da Empresa = R$ {ebitda_valor:,.0f} mil ÷ {selic_percentual/100:.3f}
+                            Valor da Empresa = R$ {valor_empresa:,.0f} mil
+                            ```
+                            """)
+                            
+                            # Se temos dados da cotação, fazer análise comparativa
+                            if dados_cotacao:
+                                st.divider()
+                                st.subheader("📈 Análise Comparativa com Cotação de Mercado")
+                                
+                                # Informações da empresa
+                                col_info1, col_info2, col_info3 = st.columns(3)
+                                
+                                with col_info1:
+                                    st.metric("Cotação Atual", f"R$ {dados_cotacao['cotacao']:.2f}")
+                                
+                                with col_info2:
+                                    st.metric("Setor", dados_cotacao['setor'])
+                                
+                                with col_info3:
+                                    if dados_cotacao['market_cap']:
+                                        market_cap_bi = dados_cotacao['market_cap'] / 1e9
+                                        st.metric("Market Cap", f"R$ {market_cap_bi:.2f} Bi")
+                                
+                                # Análise de valuation implícito
+                                st.write("**💡 Interpretação:**")
+                                st.write(f"""
+                                - **EBITDA Anual:** R$ {ebitda_valor:,.0f} mil
+                                - **Taxa de Desconto (SELIC):** {selic_percentual}% a.a.
+                                - **Valor Justo Calculado:** R$ {valor_empresa:,.0f} mil
+                                - **Cotação Atual ({dados_cotacao['data_atualizacao']}):** R$ {dados_cotacao['cotacao']:.2f}
+                                """)
+                                
+                                # Gráfico comparativo
+                                st.subheader("🎯 Comparação Visual")
+                                
+                                # Para o gráfico, vamos usar valores relativos
+                                preco_calculado_relativo = 100  # Base 100
+                                cotacao_relativa = (dados_cotacao['cotacao'] / 10) * 100  # Ajuste para escala comparável
+                                
+                                fig_comparativo = criar_grafico_comparativo(
+                                    preco_calculado_relativo, 
+                                    cotacao_relativa, 
+                                    ticker_selecionado
+                                )
+                                st.plotly_chart(fig_comparativo, use_container_width=True)
+                                
+                                # Análise qualitativa
+                                diferenca_percentual = ((cotacao_relativa - preco_calculado_relativo) / preco_calculado_relativo) * 100
+                                
+                                if diferenca_percentual > 20:
+                                    st.error("""
+                                    **🔴 Sobrevalorizado:** A cotação atual está significativamente acima do valuation calculado.
+                                    *Possíveis razões:* Expectativas de crescimento futuro, fatores setoriais favoráveis, ou especulação de mercado.
+                                    """)
+                                elif diferenca_percentual < -20:
+                                    st.success("""
+                                    **🟢 Subvalorizado:** A cotação atual está significativamente abaixo do valuation calculado.
+                                    *Possíveis oportunidades:* Valorização potencial, retorno ao valuation justo.
+                                    """)
+                                else:
+                                    st.info("""
+                                    **🟡 Valuation Próximo:** A cotação atual está alinhada com o valuation calculado.
+                                    *Interpretação:* Preço de mercado condizente com fundamentos.
+                                    """)
+                            
+                            else:
+                                st.warning("""
+                                **ℹ️ Informações Adicionais Necessárias:**
+                                - Para análise completa, é necessário o número de ações em circulação
+                                - Com o número de ações, podemos calcular o preço por ação teórico
+                                - Considere também: crescimento futuro, perspectivas do setor, concorrência
+                                """)
+                        
+                        else:
+                            st.warning("Não foi possível calcular o valuation. EBITDA inválido ou negativo.")
                     
                     else:
                         st.warning("Dados de EBITDA não disponíveis")
@@ -1220,6 +1436,7 @@ formulas = {
     "Lucro Econômico 1": "(ROI - WACC) × Investimento Médio",
     "Lucro Econômico 2": "Resultado Operacional - (WACC × Investimento Médio)",
     "EBITDA": "Resultado Operacional + Depreciação + Amortização",
+    "Valuation EBITDA/SELIC": "EBITDA ÷ (SELIC/100)",
     "Percentual Capital Terceiros": "(Passivo Circulante + Não Circulante) ÷ Total Passivo",
     "Percentual Capital Próprio": "Patrimônio Líquido ÷ Total Passivo"
 }
@@ -1272,6 +1489,12 @@ with st.sidebar.expander("💡 Metodologia livro Vellani (2024)"):
     - **CORREÇÃO:** Usa valores absolutos para depreciação/amortização para garantir cálculo correto
     - **FÓRMULA:** EBITDA = Resultado Operacional + |Depreciação e Amortização|
     - **ESCALA:** Todos os valores estão em R$ mil
+
+    **Valuation EBITDA/SELIC:**
+    - **FÓRMULA:** Valor da Empresa = EBITDA ÷ (SELIC/100)
+    - **INTERPRETAÇÃO:** Valor presente dos fluxos de caixa futuros descontados pela SELIC
+    - **COTAÇÃO:** Busca em tempo real via Yahoo Finance
+    - **ANÁLISE:** Comparação entre valuation calculado e cotação de mercado
 
     **Dataset: dff_2010_2024**
     - Período: 2010-2024 (15 anos)
