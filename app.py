@@ -187,40 +187,47 @@ def load_data():
     )
 
     # =============================================================
-    # EBITDA CORRIGIDO - BASEADO NO RELATÓRIO dff_2010_2024
-    # =============================================================
-    
-    # Hierarquia de busca baseada no relatório
-    tem_depreciacao_amortizacao_consolidada = 'Depreciação e amortização' in df.columns
-    tem_depreciacao_separada = 'Depreciação' in df.columns
-    tem_amortizacao_separada = 'Amortização' in df.columns
-    
-    if tem_depreciacao_amortizacao_consolidada:
-        # Usar a coluna consolidada 'Depreciação e amortização' (nome correto do relatório)
-        df["EBITDA"] = np.where(
-            df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna(),
-            df["Resultado Antes do Resultado Financeiro e dos Tributos"] - df["Depreciação e amortização"].fillna(0),
-            np.nan
-        )
-    elif tem_depreciacao_separada and tem_amortizacao_separada:
-        # Calcular a soma de Depreciação + Amortização
-        depreciacao_amortizacao = df['Depreciação'].fillna(0) - df['Amortização'].fillna(0)
-        df["EBITDA"] = np.where(
-            df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna(),
-            df["Resultado Antes do Resultado Financeiro e dos Tributos"] - depreciacao_amortizacao,
-            np.nan
-        )
-    elif tem_depreciacao_separada:
-        # Usar apenas Depreciação
-        df["EBITDA"] = np.where(
-            df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna(),
-            df["Resultado Antes do Resultado Financeiro e dos Tributos"] - df['Depreciação'].fillna(0),
-            np.nan
-        )
-    else:
-        # Se não temos dados de depreciação, usar aproximação
-        df["EBITDA"] = df["Resultado Antes do Resultado Financeiro e dos Tributos"]
-        st.warning("⚠️ Dados de Depreciação/Amortização não encontrados. EBITDA calculado como aproximação do Resultado Operacional.")
+# EBITDA CORRIGIDO - TRATANDO VALORES NEGATIVOS
+# =============================================================
+
+# Hierarquia de busca baseada no relatório
+tem_depreciacao_amortizacao_consolidada = 'Depreciação e amortização' in df.columns
+tem_depreciacao_separada = 'Depreciação' in df.columns
+tem_amortizacao_separada = 'Amortização' in df.columns
+
+if tem_depreciacao_amortizacao_consolidada:
+    # Usar a coluna consolidada 'Depreciação e amortização'
+    # CORREÇÃO: considerar que valores negativos devem ser SOMADOS (não subtraídos)
+    depreciacao_amortizacao = df["Depreciação e amortização"].fillna(0)
+    df["EBITDA"] = np.where(
+        df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna(),
+        df["Resultado Antes do Resultado Financeiro e dos Tributos"] + abs(depreciacao_amortizacao),
+        np.nan
+    )
+elif tem_depreciacao_separada and tem_amortizacao_separada:
+    # Calcular a soma de Depreciação + Amortização
+    # CORREÇÃO: usar valores absolutos para garantir soma correta
+    depreciacao = df['Depreciação'].fillna(0)
+    amortizacao = df['Amortização'].fillna(0)
+    depreciacao_amortizacao = abs(depreciacao) + abs(amortizacao)
+    df["EBITDA"] = np.where(
+        df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna(),
+        df["Resultado Antes do Resultado Financeiro e dos Tributos"] + depreciacao_amortizacao,
+        np.nan
+    )
+elif tem_depreciacao_separada:
+    # Usar apenas Depreciação
+    # CORREÇÃO: usar valor absoluto
+    depreciacao = abs(df['Depreciação'].fillna(0))
+    df["EBITDA"] = np.where(
+        df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna(),
+        df["Resultado Antes do Resultado Financeiro e dos Tributos"] + depreciacao,
+        np.nan
+    )
+else:
+    # Se não temos dados de depreciação, usar aproximação
+    df["EBITDA"] = df["Resultado Antes do Resultado Financeiro e dos Tributos"]
+    st.warning("⚠️ Dados de Depreciação/Amortização não encontrados. EBITDA calculado como aproximação do Resultado Operacional.")
 
     # =============================================================
     # LUCRO ECONÔMICO - CORRIGIDOS CONFORME VELLANI
