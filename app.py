@@ -1,5 +1,5 @@
 # ==============================================================
-# 📊 DASHBOARD CVM - Indicadores Financeiros (VERSÃO CORRIGIDA COM BASE NO RELATÓRIO)
+# 📊 DASHBOARD CVM - Indicadores Financeiros (VERSÃO CORRIGIDA)
 # ==============================================================
 import streamlit as st
 import pandas as pd
@@ -187,16 +187,14 @@ def load_data():
     )
 
     # =============================================================
-    # EBITDA CORRIGIDO - TRATANDO VALORES NEGATIVOS
+    # EBITDA CORRIGIDO - USANDO SOMENTE 'Depreciação e amortização'
     # =============================================================
     
-    # Hierarquia de busca baseada no relatório
+    # Verificar se a coluna consolidada existe
     tem_depreciacao_amortizacao_consolidada = 'Depreciação e amortização' in df.columns
-    tem_depreciacao_separada = 'Depreciação' in df.columns
-    tem_amortizacao_separada = 'Amortização' in df.columns
-    
+
     if tem_depreciacao_amortizacao_consolidada:
-        # Usar a coluna consolidada 'Depreciação e amortização'
+        # Usar APENAS a coluna consolidada 'Depreciação e amortização'
         # CORREÇÃO: usar valor absoluto para garantir que estamos adicionando despesas não-caixa
         depreciacao_amortizacao = abs(df["Depreciação e amortização"].fillna(0))
         df["EBITDA"] = np.where(
@@ -204,28 +202,8 @@ def load_data():
             df["Resultado Antes do Resultado Financeiro e dos Tributos"] + depreciacao_amortizacao,
             np.nan
         )
-    elif tem_depreciacao_separada and tem_amortizacao_separada:
-        # Calcular a soma de Depreciação + Amortização
-        # CORREÇÃO: usar valores absolutos
-        depreciacao = abs(df['Depreciação'].fillna(0))
-        amortizacao = abs(df['Amortização'].fillna(0))
-        depreciacao_amortizacao = depreciacao + amortizacao
-        df["EBITDA"] = np.where(
-            df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna(),
-            df["Resultado Antes do Resultado Financeiro e dos Tributos"] + depreciacao_amortizacao,
-            np.nan
-        )
-    elif tem_depreciacao_separada:
-        # Usar apenas Depreciação
-        # CORREÇÃO: usar valor absoluto
-        depreciacao = abs(df['Depreciação'].fillna(0))
-        df["EBITDA"] = np.where(
-            df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna(),
-            df["Resultado Antes do Resultado Financeiro e dos Tributos"] + depreciacao,
-            np.nan
-        )
     else:
-        # Se não temos dados de depreciação, usar aproximação
+        # Se não temos dados de depreciação/amortização consolidada, usar aproximação
         df["EBITDA"] = df["Resultado Antes do Resultado Financeiro e dos Tributos"]
         st.warning("⚠️ Dados de Depreciação/Amortização não encontrados. EBITDA calculado como aproximação do Resultado Operacional.")
 
@@ -598,11 +576,9 @@ elif modo_analise == "📈 Visão por Empresa":
                         # Detalhamento do cálculo
                         st.subheader("📊 Detalhamento do Cálculo do EBITDA")
                         
-                        # Verificar qual fonte de dados foi usada
+                        # Verificar se a coluna consolidada existe
                         tem_depreciacao_amortizacao_consolidada = 'Depreciação e amortização' in df_filtrado.columns and pd.notna(df_filtrado['Depreciação e amortização'].iloc[0])
-                        tem_depreciacao_separada = 'Depreciação' in df_filtrado.columns and pd.notna(df_filtrado['Depreciação'].iloc[0])
-                        tem_amortizacao_separada = 'Amortização' in df_filtrado.columns and pd.notna(df_filtrado['Amortização'].iloc[0])
-                        
+
                         if tem_depreciacao_amortizacao_consolidada:
                             depreciacao_amortizacao = df_filtrado['Depreciação e amortização'].iloc[0]
                             depreciacao_amortizacao_abs = abs(depreciacao_amortizacao)
@@ -610,28 +586,6 @@ elif modo_analise == "📈 Visão por Empresa":
                             st.write(f"**Depreciação e Amortização:** R$ {depreciacao_amortizacao_abs/1000:,.0f} mil")
                             st.write(f"**EBITDA = Resultado Operacional + Depreciação e Amortização**")
                             st.write(f"**EBITDA =** R$ {resultado_operacional/1000:,.0f} mil + R$ {depreciacao_amortizacao_abs/1000:,.0f} mil = **R$ {ebitda_valor/1000:,.0f} mil**")
-                        
-                        elif tem_depreciacao_separada and tem_amortizacao_separada:
-                            depreciacao = df_filtrado['Depreciação'].iloc[0]
-                            amortizacao = df_filtrado['Amortização'].iloc[0]
-                            depreciacao_abs = abs(depreciacao)
-                            amortizacao_abs = abs(amortizacao)
-                            total_da = depreciacao_abs + amortizacao_abs
-                            st.write(f"**Resultado Operacional:** R$ {resultado_operacional/1000:,.0f} mil")
-                            st.write(f"**Depreciação:** R$ {depreciacao_abs/1000:,.0f} mil")
-                            st.write(f"**Amortização:** R$ {amortizacao_abs/1000:,.0f} mil")
-                            st.write(f"**Depreciação + Amortização:** R$ {total_da/1000:,.0f} mil")
-                            st.write(f"**EBITDA = Resultado Operacional + (Depreciação + Amortização)**")
-                            st.write(f"**EBITDA =** R$ {resultado_operacional/1000:,.0f} mil + R$ {total_da/1000:,.0f} mil = **R$ {ebitda_valor/1000:,.0f} mil**")
-                        
-                        elif tem_depreciacao_separada:
-                            depreciacao = df_filtrado['Depreciação'].iloc[0]
-                            depreciacao_abs = abs(depreciacao)
-                            st.write(f"**Resultado Operacional:** R$ {resultado_operacional/1000:,.0f} mil")
-                            st.write(f"**Depreciação:** R$ {depreciacao_abs/1000:,.0f} mil")
-                            st.write(f"**EBITDA = Resultado Operacional + Depreciação**")
-                            st.write(f"**EBITDA =** R$ {resultado_operacional/1000:,.0f} mil + R$ {depreciacao_abs/1000:,.0f} mil = **R$ {ebitda_valor/1000:,.0f} mil**")
-                        
                         else:
                             st.info("ℹ️ Dados de Depreciação/Amortização não disponíveis. EBITDA calculado como aproximação do Resultado Operacional.")
                             st.write(f"**EBITDA ≈ Resultado Operacional = R$ {ebitda_valor/1000:,.0f} mil**")
@@ -751,13 +705,9 @@ elif modo_analise == "📈 Visão por Empresa":
                         "Empréstimos e Financiamentos - Não Circulante"
                     ]
                     
-                    # Adicionar colunas de depreciação/amortização se existirem
+                    # Adicionar APENAS a coluna consolidada de depreciação/amortização
                     if 'Depreciação e amortização' in df_filtrado.columns:
                         dados_brutos_cols.append('Depreciação e amortização')
-                    if 'Depreciação' in df_filtrado.columns:
-                        dados_brutos_cols.append('Depreciação')
-                    if 'Amortização' in df_filtrado.columns:
-                        dados_brutos_cols.append('Amortização')
                     
                     dados_brutos = {}
                     for col in dados_brutos_cols:
@@ -1292,12 +1242,9 @@ with st.sidebar.expander("💡 Metodologia livro Vellani (2024)"):
     - **RESULTADO:** Lucro Econômico 1 = Lucro Econômico 2
 
     **EBITDA Corrigido:**
-    - Hierarquia de cálculo baseada no dataset dff_2010_2024:
-      1. 'Depreciação e amortização' (coluna consolidada)
-      2. 'Depreciação' + 'Amortização' (soma das colunas separadas)
-      3. 'Depreciação' (apenas)
-      4. Aproximação (Resultado Operacional)
+    - **EXCLUSIVAMENTE** usando a coluna 'Depreciação e amortização'
     - **CORREÇÃO:** Usa valores absolutos para depreciação/amortização para garantir cálculo correto
+    - **FÓRMULA:** EBITDA = Resultado Operacional + |Depreciação e Amortização|
 
     **Dataset: dff_2010_2024**
     - Período: 2010-2024 (15 anos)
