@@ -537,7 +537,7 @@ elif modo_analise == "📈 Visão por Empresa":
         if pd.notna(df_filtrado["Alavancagem Eficaz"].iloc[0]):
             if df_filtrado["Alavancagem Eficaz"].iloc[0]:
                 st.success("✅ Alavancagem com Eficácia: SIM")
-                st.write(f"ROE ({df_filtrado['ROE'].iloc[0]:.2%}) > ROA ({df_filtrado['ROA'].iloc[0]:.2%}) > ROI ({df_filtrado['ROI'].iloc[0]:.2%})")
+                st.write(f"ROE ({df_filtrado['ROE'].iloc[0]:.2%}) > ROA ({df_filtrado['ROA'].iloc[0]:.2%})")
             else:
                 st.warning("⚠️ Alavancagem com Eficácia: NÃO")
         else:
