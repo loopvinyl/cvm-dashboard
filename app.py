@@ -12,8 +12,8 @@ import os
 # ==============================
 # CONFIGURAÇÕES INICIAIS
 # ==============================
-st.set_page_config(page_title="Dashboard CVM - Indicadores", layout="wide")
-st.title("📊 Dashboard CVM - Análise de Indicadores Financeiros")
+st.set_page_config(page_title="Análise das Demonstrações Financeiras", layout="wide")
+st.title("Referência: Vellani (2024)")
 
 # ==============================
 # LEITURA DE DADOS
