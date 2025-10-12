@@ -432,7 +432,7 @@ if modo_analise == "🏆 Ranking Comparativo":
 # TELA - VISÃO POR EMPRESA
 # ==============================
 elif modo_analise == "📈 Visão por Empresa":
-    st.header(f"📊 Análise Detalhada - {ticker_selecionado}")
+    st.header(f"Empresa - {ticker_selecionado}")
     
     if not df_empresa_todos_anos.empty:
         # Abas para análise atual vs evolução temporal
