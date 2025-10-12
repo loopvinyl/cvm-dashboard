@@ -1,5 +1,5 @@
 # ==============================================================
-# 📊 DASHBOARD CVM - Indicadores Financeiros (VERSÃO COMPLETA COM LUCRO ECONÔMICO TEMPORAL)
+# Indicadores Financeiros
 # ==============================================================
 import streamlit as st
 import pandas as pd
@@ -20,7 +20,6 @@ st.title("📊 Dashboard CVM - Análise de Indicadores Financeiros")
 # ==============================
 @st.cache_data
 def load_data():
-    # [MANTIDO IGUAL - todo o código de carga e cálculo dos indicadores]
     # Procurar automaticamente o arquivo em locais possíveis
     possible_paths = [
         "/content/data_frame.xlsx",   # Google Colab
@@ -188,23 +187,13 @@ def load_data():
     )
 
     # =============================================================
-    # EBITDA E LUCRO ECONÔMICO - CORRIGIDOS PARA GARANTIR IGUALDADE
+    # EBITDA E LUCRO ECONÔMICO - CORRIGIDOS CONFORME VELLANI
     # =============================================================
     
-    # EBITDA = Resultado Antes dos Tributos + Despesas Financeiras (APROXIMAÇÃO)
-    df["EBITDA"] = np.where(
-        (df["Resultado Antes dos Tributos sobre o Lucro"].notna()) & 
-        (df["Despesas Financeiras"].notna()),
-        df["Resultado Antes dos Tributos sobre o Lucro"] + df["Despesas Financeiras"].abs(),
-        np.nan
-    )
+    # EBITDA CORRIGIDO: Resultado Antes do Resultado Financeiro e dos Tributos
+    df["EBITDA"] = df["Resultado Antes do Resultado Financeiro e dos Tributos"]
 
-    # ROI EBITDA = EBITDA / Investimento Médio
-    df["ROI EBITDA"] = np.where(
-        (df["EBITDA"].notna()) & (df["Investimento Médio"] > 0),
-        df["EBITDA"] / df["Investimento Médio"],
-        np.nan
-    )
+    # REMOVIDO: ROI EBITDA (não existe na metodologia Vellani)
 
     # LUCRO ECONÔMICO 1 = (ROI - WACC) × Investimento Médio
     df["Lucro Econômico 1"] = np.where(
@@ -225,12 +214,7 @@ def load_data():
     # VERIFICAÇÃO DE CONSISTÊNCIA
     df["Diferença Lucro Econômico"] = abs(df["Lucro Econômico 1"] - df["Lucro Econômico 2"])
 
-    # LUCRO ECONÔMICO EBITDA = (ROI EBITDA - WACC) × Investimento Médio
-    df["Lucro Econômico EBITDA"] = np.where(
-        (df["ROI EBITDA"].notna()) & (df["wacc"].notna()) & (df["Investimento Médio"].notna()),
-        (df["ROI EBITDA"] - df["wacc"]) * df["Investimento Médio"],
-        np.nan
-    )
+    # REMOVIDO: Lucro Econômico EBITDA (não existe na metodologia Vellani)
 
     # =============================================================
     # ANÁLISE DE ALAVANCAGEM - ✅ CORRETO
@@ -534,7 +518,7 @@ elif modo_analise == "📈 Visão por Empresa":
                 
                 with tab1:
                     st.subheader("Indicadores de Rentabilidade")
-                    rentabilidade_cols = ["ROE", "ROA", "ROI", "ROI EBITDA", "Margem Bruta", "Margem Operacional", "Margem Líquida"]
+                    rentabilidade_cols = ["ROE", "ROA", "ROI", "Margem Bruta", "Margem Operacional", "Margem Líquida"]
                     rentabilidade_data = []
                     
                     for col in rentabilidade_cols:
@@ -629,7 +613,7 @@ elif modo_analise == "📈 Visão por Empresa":
                 
                 with tab4:
                     st.subheader("Lucro Econômico")
-                    lucro_cols = ["Lucro Econômico 1", "Lucro Econômico 2", "Lucro Econômico EBITDA"]
+                    lucro_cols = ["Lucro Econômico 1", "Lucro Econômico 2"]
                     lucro_data = []
                     
                     for col in lucro_cols:
@@ -658,7 +642,7 @@ elif modo_analise == "📈 Visão por Empresa":
                 
                 with tab5:
                     st.subheader("Dados Financeiros Brutos (R$ Mil)")
-                    dados_brutos = df_filtrado[[
+                    dados_brutos_cols = [
                         "Receita de Venda de Bens e/ou Serviços",
                         "Resultado Bruto", 
                         "Resultado Antes do Resultado Financeiro e dos Tributos",
@@ -669,11 +653,21 @@ elif modo_analise == "📈 Visão por Empresa":
                         "Patrimônio Líquido Consolidado",
                         "Empréstimos e Financiamentos - Circulante",
                         "Empréstimos e Financiamentos - Não Circulante"
-                    ]].iloc[0]
+                    ]
+                    
+                    dados_brutos = {}
+                    for col in dados_brutos_cols:
+                        if col in df_filtrado.columns:
+                            valor = df_filtrado[col].iloc[0]
+                            if pd.notna(valor):
+                                dados_brutos[col] = valor / 1000  # Converter para milhares
+                            else:
+                                dados_brutos[col] = None
                     
                     # Formatar valores em milhares
-                    dados_formatados = (dados_brutos / 1000).apply(lambda x: f"R$ {x:,.0f}" if pd.notna(x) else "N/A")
-                    st.dataframe(dados_formatados.to_frame("Valor (R$ Mil)"), use_container_width=True)
+                    dados_formatados = {k: f"R$ {v:,.0f}" if v is not None else "N/A" for k, v in dados_brutos.items()}
+                    st.dataframe(pd.DataFrame.from_dict(dados_formatados, orient='index', columns=['Valor (R$ Mil)']), 
+                               use_container_width=True)
             
             else:
                 st.warning(f"Não há dados disponíveis para {ticker_selecionado} no ano {ano_selecionado}")
@@ -810,7 +804,7 @@ elif modo_analise == "📈 Visão por Empresa":
                     )
                     st.plotly_chart(fig_margens, use_container_width=True)
                 
-                # TERCEIRA LINHA - LUCRO ECONÔMICO (ADICIONADO)
+                # TERCEIRA LINHA - LUCRO ECONÔMICO
                 st.subheader("💰 Evolução do Lucro Econômico")
                 col5, col6 = st.columns(2)
                 
@@ -818,9 +812,9 @@ elif modo_analise == "📈 Visão por Empresa":
                     # Lucro Econômico em valores absolutos
                     fig_lucro_absoluto = go.Figure()
                     
-                    indicadores_lucro = ['Lucro Econômico 1', 'Lucro Econômico 2', 'Lucro Econômico EBITDA']
-                    nomes_lucro = ['Lucro Econômico 1', 'Lucro Econômico 2', 'Lucro Econômico EBITDA']
-                    cores_lucro = ['#e74c3c', '#3498db', '#2ecc71']
+                    indicadores_lucro = ['Lucro Econômico 1', 'Lucro Econômico 2']
+                    nomes_lucro = ['Lucro Econômico 1', 'Lucro Econômico 2']
+                    cores_lucro = ['#e74c3c', '#3498db']
                     
                     for i, indicador in enumerate(indicadores_lucro):
                         if indicador in df_empresa_todos_anos.columns:
@@ -1064,7 +1058,7 @@ elif modo_analise == "🏭 Análise Setorial":
                     )
                     st.plotly_chart(fig_setor_estrutura, use_container_width=True)
                 
-                # TERCEIRA LINHA - LUCRO ECONÔMICO DO SETOR (ADICIONADO)
+                # TERCEIRA LINHA - LUCRO ECONÔMICO DO SETOR
                 st.subheader("💰 Evolução do Lucro Econômico no Setor")
                 col3, col4 = st.columns(2)
                 
@@ -1141,8 +1135,7 @@ formulas = {
     "WACC": "(ki × % Capital Terceiros) + (ke × % Capital Próprio)",
     "Lucro Econômico 1": "(ROI - WACC) × Investimento Médio",
     "Lucro Econômico 2": "Resultado Operacional - (WACC × Investimento Médio)",
-    "EBITDA": "Resultado Antes dos Tributos + Despesas Financeiras",
-    "ROI EBITDA": "EBITDA ÷ Investimento Médio",
+    "EBITDA": "Resultado Antes do Resultado Financeiro e dos Tributos",
     "Percentual Capital Terceiros": "(Passivo Circulante + Não Circulante) ÷ Total Passivo",
     "Percentual Capital Próprio": "Patrimônio Líquido ÷ Total Passivo"
 }
@@ -1189,6 +1182,10 @@ with st.sidebar.expander("💡 Metodologia livro Vellani (2024)"):
     - Lucro Econômico 1 = (ROI - WACC) × Investimento Médio
     - Lucro Econômico 2 = Resultado Operacional - (WACC × Investimento Médio)
     - **RESULTADO:** Lucro Econômico 1 = Lucro Econômico 2
+
+    **EBITDA Corrigido:**
+    - EBITDA = Resultado Antes do Resultado Financeiro e dos Tributos
+    - REMOVIDO: ROI EBITDA (não existe na metodologia Vellani)
 
     **Novos Gráficos de Evolução Temporal:**
     - Análise histórica dos indicadores por empresa
