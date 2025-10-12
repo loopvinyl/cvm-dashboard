@@ -1,5 +1,5 @@
 # ==============================================================
-# Indicadores Financeiros
+# 📊 DASHBOARD CVM - Indicadores Financeiros (VERSÃO CORRIGIDA COM BASE NO RELATÓRIO)
 # ==============================================================
 import streamlit as st
 import pandas as pd
@@ -12,8 +12,8 @@ import os
 # ==============================
 # CONFIGURAÇÕES INICIAIS
 # ==============================
-st.set_page_config(page_title="vellani (2024)", layout="wide")
-st.title("Análise das Demonstrações Financeiras")
+st.set_page_config(page_title="Dashboard CVM - Indicadores", layout="wide")
+st.title("📊 Dashboard CVM - Análise de Indicadores Financeiros")
 
 # ==============================
 # LEITURA DE DADOS
@@ -46,7 +46,7 @@ def load_data():
     df.columns = [c.strip() for c in df.columns]
 
     # =============================================================
-    # MAPEAMENTO EXATO DAS CONTAS (compatível com Excel CPFE3)
+    # MAPEAMENTO EXATO DAS CONTAS (compatível com dff_2010_2024)
     # =============================================================
     # Ordenar por Ticker e Ano para garantir que shift() funcione corretamente
     df = df.sort_values(['Ticker', 'Ano']).reset_index(drop=True)
@@ -187,14 +187,45 @@ def load_data():
     )
 
     # =============================================================
-    # EBITDA E LUCRO ECONÔMICO - CORRIGIDOS CONFORME VELLANI
+    # EBITDA CORRIGIDO - BASEADO NO RELATÓRIO dff_2010_2024
     # =============================================================
     
-    # EBITDA CORRIGIDO: Resultado Antes do Resultado Financeiro e dos Tributos
-    df["EBITDA"] = df["Resultado Antes do Resultado Financeiro e dos Tributos"]
+    # Hierarquia de busca baseada no relatório
+    tem_depreciacao_amortizacao_consolidada = 'Depreciação e amortização' in df.columns
+    tem_depreciacao_separada = 'Depreciação' in df.columns
+    tem_amortizacao_separada = 'Amortização' in df.columns
+    
+    if tem_depreciacao_amortizacao_consolidada:
+        # Usar a coluna consolidada 'Depreciação e amortização' (nome correto do relatório)
+        df["EBITDA"] = np.where(
+            df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna(),
+            df["Resultado Antes do Resultado Financeiro e dos Tributos"] + df["Depreciação e amortização"].fillna(0),
+            np.nan
+        )
+    elif tem_depreciacao_separada and tem_amortizacao_separada:
+        # Calcular a soma de Depreciação + Amortização
+        depreciacao_amortizacao = df['Depreciação'].fillna(0) + df['Amortização'].fillna(0)
+        df["EBITDA"] = np.where(
+            df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna(),
+            df["Resultado Antes do Resultado Financeiro e dos Tributos"] + depreciacao_amortizacao,
+            np.nan
+        )
+    elif tem_depreciacao_separada:
+        # Usar apenas Depreciação
+        df["EBITDA"] = np.where(
+            df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna(),
+            df["Resultado Antes do Resultado Financeiro e dos Tributos"] + df['Depreciação'].fillna(0),
+            np.nan
+        )
+    else:
+        # Se não temos dados de depreciação, usar aproximação
+        df["EBITDA"] = df["Resultado Antes do Resultado Financeiro e dos Tributos"]
+        st.warning("⚠️ Dados de Depreciação/Amortização não encontrados. EBITDA calculado como aproximação do Resultado Operacional.")
 
-    # REMOVIDO: ROI EBITDA (não existe na metodologia Vellani)
-
+    # =============================================================
+    # LUCRO ECONÔMICO - CORRIGIDOS CONFORME VELLANI
+    # =============================================================
+    
     # LUCRO ECONÔMICO 1 = (ROI - WACC) × Investimento Médio
     df["Lucro Econômico 1"] = np.where(
         (df["ROI"].notna()) & (df["wacc"].notna()) & (df["Investimento Médio"].notna()),
@@ -202,7 +233,7 @@ def load_data():
         np.nan
     )
 
-    # LUCRO ECONÔMICO 2 = Resultado Operacional - (WACC × Investimento Médio) ✅ CORRIGIDO
+    # LUCRO ECONÔMICO 2 = Resultado Operacional - (WACC × Investimento Médio)
     df["Lucro Econômico 2"] = np.where(
         (df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna()) & 
         (df["wacc"].notna()) & 
@@ -213,8 +244,6 @@ def load_data():
 
     # VERIFICAÇÃO DE CONSISTÊNCIA
     df["Diferença Lucro Econômico"] = abs(df["Lucro Econômico 1"] - df["Lucro Econômico 2"])
-
-    # REMOVIDO: Lucro Econômico EBITDA (não existe na metodologia Vellani)
 
     # =============================================================
     # ANÁLISE DE ALAVANCAGEM - ✅ CORRETO
@@ -432,7 +461,7 @@ if modo_analise == "🏆 Ranking Comparativo":
 # TELA - VISÃO POR EMPRESA
 # ==============================
 elif modo_analise == "📈 Visão por Empresa":
-    st.header(f"Empresa - {ticker_selecionado}")
+    st.header(f"📊 Análise Detalhada - {ticker_selecionado}")
     
     if not df_empresa_todos_anos.empty:
         # Abas para análise atual vs evolução temporal
@@ -514,7 +543,7 @@ elif modo_analise == "📈 Visão por Empresa":
                 st.divider()
                 
                 # Abas para diferentes categorias de indicadores
-                tab1, tab2, tab3, tab4, tab5 = st.tabs(["📈 Rentabilidade", "🏛️ Estrutura Capital", "💰 Custo Capital", "📊 Lucro Econômico", "📋 Dados Brutos"])
+                tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📈 Rentabilidade", "💰 EBITDA", "🏛️ Estrutura Capital", "💸 Custo Capital", "📊 Lucro Econômico", "📋 Dados Brutos"])
                 
                 with tab1:
                     st.subheader("Indicadores de Rentabilidade")
@@ -544,6 +573,62 @@ elif modo_analise == "📈 Visão por Empresa":
                         st.warning("Não há dados de rentabilidade disponíveis")
                 
                 with tab2:
+                    st.subheader("EBITDA - Geração de Caixa Operacional")
+                    
+                    # Mostrar cálculo do EBITDA
+                    ebitda_valor = df_filtrado["EBITDA"].iloc[0] if "EBITDA" in df_filtrado.columns and pd.notna(df_filtrado["EBITDA"].iloc[0]) else None
+                    resultado_operacional = df_filtrado["Resultado Antes do Resultado Financeiro e dos Tributos"].iloc[0] if pd.notna(df_filtrado["Resultado Antes do Resultado Financeiro e dos Tributos"].iloc[0]) else None
+                    
+                    if ebitda_valor is not None and resultado_operacional is not None:
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            st.metric("EBITDA", f"R$ {ebitda_valor/1000:,.0f} mil")
+                            
+                        with col2:
+                            st.metric("Resultado Operacional", f"R$ {resultado_operacional/1000:,.0f} mil")
+                        
+                        # Detalhamento do cálculo
+                        st.subheader("📊 Detalhamento do Cálculo do EBITDA")
+                        
+                        # Verificar qual fonte de dados foi usada
+                        tem_depreciacao_amortizacao_consolidada = 'Depreciação e amortização' in df_filtrado.columns and pd.notna(df_filtrado['Depreciação e amortização'].iloc[0])
+                        tem_depreciacao_separada = 'Depreciação' in df_filtrado.columns and pd.notna(df_filtrado['Depreciação'].iloc[0])
+                        tem_amortizacao_separada = 'Amortização' in df_filtrado.columns and pd.notna(df_filtrado['Amortização'].iloc[0])
+                        
+                        if tem_depreciacao_amortizacao_consolidada:
+                            depreciacao_amortizacao = df_filtrado['Depreciação e amortização'].iloc[0]
+                            st.write(f"**Resultado Operacional:** R$ {resultado_operacional/1000:,.0f} mil")
+                            st.write(f"**Depreciação e Amortização:** R$ {depreciacao_amortizacao/1000:,.0f} mil")
+                            st.write(f"**EBITDA = Resultado Operacional + Depreciação e Amortização**")
+                            st.write(f"**EBITDA =** R$ {resultado_operacional/1000:,.0f} mil + R$ {depreciacao_amortizacao/1000:,.0f} mil = **R$ {ebitda_valor/1000:,.0f} mil**")
+                        
+                        elif tem_depreciacao_separada and tem_amortizacao_separada:
+                            depreciacao = df_filtrado['Depreciação'].iloc[0]
+                            amortizacao = df_filtrado['Amortização'].iloc[0]
+                            total_da = depreciacao + amortizacao
+                            st.write(f"**Resultado Operacional:** R$ {resultado_operacional/1000:,.0f} mil")
+                            st.write(f"**Depreciação:** R$ {depreciacao/1000:,.0f} mil")
+                            st.write(f"**Amortização:** R$ {amortizacao/1000:,.0f} mil")
+                            st.write(f"**Depreciação + Amortização:** R$ {total_da/1000:,.0f} mil")
+                            st.write(f"**EBITDA = Resultado Operacional + (Depreciação + Amortização)**")
+                            st.write(f"**EBITDA =** R$ {resultado_operacional/1000:,.0f} mil + R$ {total_da/1000:,.0f} mil = **R$ {ebitda_valor/1000:,.0f} mil**")
+                        
+                        elif tem_depreciacao_separada:
+                            depreciacao = df_filtrado['Depreciação'].iloc[0]
+                            st.write(f"**Resultado Operacional:** R$ {resultado_operacional/1000:,.0f} mil")
+                            st.write(f"**Depreciação:** R$ {depreciacao/1000:,.0f} mil")
+                            st.write(f"**EBITDA = Resultado Operacional + Depreciação**")
+                            st.write(f"**EBITDA =** R$ {resultado_operacional/1000:,.0f} mil + R$ {depreciacao/1000:,.0f} mil = **R$ {ebitda_valor/1000:,.0f} mil**")
+                        
+                        else:
+                            st.info("ℹ️ Dados de Depreciação/Amortização não disponíveis. EBITDA calculado como aproximação do Resultado Operacional.")
+                            st.write(f"**EBITDA ≈ Resultado Operacional = R$ {ebitda_valor/1000:,.0f} mil**")
+                    
+                    else:
+                        st.warning("Dados de EBITDA não disponíveis")
+                
+                with tab3:
                     st.subheader("Estrutura de Capital")
                     estrutura_cols = ["Percentual Capital Terceiros", "Percentual Capital Próprio"]
                     estrutura_data = []
@@ -584,7 +669,7 @@ elif modo_analise == "📈 Visão por Empresa":
                     else:
                         st.warning("Não há dados de estrutura de capital disponíveis")
                 
-                with tab3:
+                with tab4:
                     st.subheader("Custo de Capital")
                     custo_cols = ["ki", "ke", "wacc"]
                     custo_data = []
@@ -611,7 +696,7 @@ elif modo_analise == "📈 Visão por Empresa":
                     else:
                         st.warning("Não há dados de custo de capital disponíveis")
                 
-                with tab4:
+                with tab5:
                     st.subheader("Lucro Econômico")
                     lucro_cols = ["Lucro Econômico 1", "Lucro Econômico 2"]
                     lucro_data = []
@@ -640,7 +725,7 @@ elif modo_analise == "📈 Visão por Empresa":
                     else:
                         st.warning("Não há dados de lucro econômico disponíveis")
                 
-                with tab5:
+                with tab6:
                     st.subheader("Dados Financeiros Brutos (R$ Mil)")
                     dados_brutos_cols = [
                         "Receita de Venda de Bens e/ou Serviços",
@@ -654,6 +739,14 @@ elif modo_analise == "📈 Visão por Empresa":
                         "Empréstimos e Financiamentos - Circulante",
                         "Empréstimos e Financiamentos - Não Circulante"
                     ]
+                    
+                    # Adicionar colunas de depreciação/amortização se existirem
+                    if 'Depreciação e amortização' in df_filtrado.columns:
+                        dados_brutos_cols.append('Depreciação e amortização')
+                    if 'Depreciação' in df_filtrado.columns:
+                        dados_brutos_cols.append('Depreciação')
+                    if 'Amortização' in df_filtrado.columns:
+                        dados_brutos_cols.append('Amortização')
                     
                     dados_brutos = {}
                     for col in dados_brutos_cols:
@@ -804,8 +897,8 @@ elif modo_analise == "📈 Visão por Empresa":
                     )
                     st.plotly_chart(fig_margens, use_container_width=True)
                 
-                # TERCEIRA LINHA - LUCRO ECONÔMICO
-                st.subheader("💰 Evolução do Lucro Econômico")
+                # TERCEIRA LINHA - LUCRO ECONÔMICO E EBITDA
+                st.subheader("💰 Evolução do Lucro Econômico e EBITDA")
                 col5, col6 = st.columns(2)
                 
                 with col5:
@@ -841,49 +934,50 @@ elif modo_analise == "📈 Visão por Empresa":
                     st.plotly_chart(fig_lucro_absoluto, use_container_width=True)
                 
                 with col6:
-                    # Componentes do Lucro Econômico
-                    fig_componentes = go.Figure()
+                    # EBITDA vs Resultado Operacional
+                    fig_ebitda = go.Figure()
                     
-                    componentes = ['Resultado Antes do Resultado Financeiro e dos Tributos', 'Lucro Econômico 1']
-                    nomes_componentes = ['Resultado Operacional', 'Lucro Econômico']
-                    cores_componentes = ['#34495e', '#e74c3c']
+                    indicadores_ebitda = ['EBITDA', 'Resultado Antes do Resultado Financeiro e dos Tributos']
+                    nomes_ebitda = ['EBITDA', 'Resultado Operacional']
+                    cores_ebitda = ['#2ecc71', '#34495e']
                     
-                    for i, componente in enumerate(componentes):
-                        if componente in df_empresa_todos_anos.columns:
-                            dados_validos = df_empresa_todos_anos[df_empresa_todos_anos[componente].notna()]
+                    for i, indicador in enumerate(indicadores_ebitda):
+                        if indicador in df_empresa_todos_anos.columns:
+                            dados_validos = df_empresa_todos_anos[df_empresa_todos_anos[indicador].notna()]
                             if not dados_validos.empty:
                                 # Converter para milhões
-                                valores = dados_validos[componente] / 1e6
-                                fig_componentes.add_trace(go.Bar(
+                                valores = dados_validos[indicador] / 1e6
+                                fig_ebitda.add_trace(go.Scatter(
                                     x=dados_validos['Ano'],
                                     y=valores,
-                                    name=nomes_componentes[i],
-                                    marker_color=cores_componentes[i % len(cores_componentes)]
+                                    mode='lines+markers',
+                                    name=nomes_ebitda[i],
+                                    line=dict(color=cores_ebitda[i % len(cores_ebitda)], width=3),
+                                    marker=dict(size=8)
                                 ))
                     
-                    fig_componentes.update_layout(
-                        title='Resultado Operacional vs Lucro Econômico',
+                    fig_ebitda.update_layout(
+                        title='EBITDA vs Resultado Operacional',
                         xaxis_title='Ano',
                         yaxis_title='Valor (R$ Milhões)',
-                        barmode='group',
                         height=400,
                         showlegend=True
                     )
-                    st.plotly_chart(fig_componentes, use_container_width=True)
+                    st.plotly_chart(fig_ebitda, use_container_width=True)
                 
                 # Tabela resumo da evolução
                 st.subheader("📋 Resumo da Evolução - Principais Indicadores")
                 
                 # Selecionar indicadores chave para a tabela
                 indicadores_resumo = ['ROE', 'ROA', 'ROI', 'Margem Líquida', 'wacc', 'Percentual Capital Próprio', 
-                                    'Lucro Econômico 1', 'Resultado Antes do Resultado Financeiro e dos Tributos']
+                                    'Lucro Econômico 1', 'Resultado Antes do Resultado Financeiro e dos Tributos', 'EBITDA']
                 df_resumo = df_empresa_todos_anos[['Ano'] + [col for col in indicadores_resumo if col in df_empresa_todos_anos.columns]]
                 
                 # Formatar para porcentagem e valores monetários
                 def formatar_valor(valor, coluna):
                     if coluna in ['ROE', 'ROA', 'ROI', 'Margem Líquida', 'wacc', 'Percentual Capital Próprio']:
                         return f"{valor:.2%}" if pd.notna(valor) else "N/A"
-                    elif coluna in ['Lucro Econômico 1', 'Resultado Antes do Resultado Financeiro e dos Tributos']:
+                    elif coluna in ['Lucro Econômico 1', 'Resultado Antes do Resultado Financeiro e dos Tributos', 'EBITDA']:
                         return f"R$ {valor/1e6:,.1f} Mi" if pd.notna(valor) else "N/A"
                     else:
                         return valor
@@ -989,7 +1083,7 @@ elif modo_analise == "🏭 Análise Setorial":
             
             if len(df_setor_todos_anos['Ano'].unique()) > 1:
                 # Calcular médias do setor por ano
-                indicadores_setor = ['ROE', 'ROA', 'ROI', 'Margem Líquida', 'wacc', 'Percentual Capital Próprio', 'Lucro Econômico 1']
+                indicadores_setor = ['ROE', 'ROA', 'ROI', 'Margem Líquida', 'wacc', 'Percentual Capital Próprio', 'Lucro Econômico 1', 'EBITDA']
                 
                 # Agrupar por ano e calcular mediana (menos sensível a outliers)
                 df_setor_evolucao = df_setor_todos_anos.groupby('Ano')[indicadores_setor].median().reset_index()
@@ -1058,8 +1152,8 @@ elif modo_analise == "🏭 Análise Setorial":
                     )
                     st.plotly_chart(fig_setor_estrutura, use_container_width=True)
                 
-                # TERCEIRA LINHA - LUCRO ECONÔMICO DO SETOR
-                st.subheader("💰 Evolução do Lucro Econômico no Setor")
+                # TERCEIRA LINHA - LUCRO ECONÔMICO E EBITDA DO SETOR
+                st.subheader("💰 Evolução do Lucro Econômico e EBITDA no Setor")
                 col3, col4 = st.columns(2)
                 
                 with col3:
@@ -1074,12 +1168,15 @@ elif modo_analise == "🏭 Análise Setorial":
                         st.plotly_chart(fig_setor_lucro, use_container_width=True)
                 
                 with col4:
-                    # Distribuição do Lucro Econômico no setor
-                    if 'Lucro Econômico 1' in df_setor_todos_anos.columns:
-                        fig_box_lucro = px.box(df_setor_todos_anos, x='Ano', y='Lucro Econômico 1',
-                                             title='Distribuição do Lucro Econômico no Setor')
-                        fig_box_lucro.update_layout(height=400)
-                        st.plotly_chart(fig_box_lucro, use_container_width=True)
+                    # EBITDA médio do setor
+                    if 'EBITDA' in df_setor_evolucao.columns:
+                        fig_setor_ebitda = px.line(df_setor_evolucao, x='Ano', y='EBITDA',
+                                                 title='EBITDA Médio do Setor (Mediana)')
+                        fig_setor_ebitda.update_layout(
+                            yaxis_title='EBITDA (R$)',
+                            height=400
+                        )
+                        st.plotly_chart(fig_setor_ebitda, use_container_width=True)
                 
                 # Tabela resumo da evolução do setor
                 st.subheader("📋 Resumo da Evolução do Setor - Principais Indicadores")
@@ -1088,7 +1185,7 @@ elif modo_analise == "🏭 Análise Setorial":
                 def formatar_valor_setor(valor, coluna):
                     if coluna in ['ROE', 'ROA', 'ROI', 'Margem Líquida', 'wacc', 'Percentual Capital Próprio']:
                         return f"{valor:.2%}" if pd.notna(valor) else "N/A"
-                    elif coluna == 'Lucro Econômico 1':
+                    elif coluna in ['Lucro Econômico 1', 'EBITDA']:
                         return f"R$ {valor/1e6:,.1f} Mi" if pd.notna(valor) else "N/A"
                     else:
                         return valor
@@ -1135,7 +1232,7 @@ formulas = {
     "WACC": "(ki × % Capital Terceiros) + (ke × % Capital Próprio)",
     "Lucro Econômico 1": "(ROI - WACC) × Investimento Médio",
     "Lucro Econômico 2": "Resultado Operacional - (WACC × Investimento Médio)",
-    "EBITDA": "Resultado Antes do Resultado Financeiro e dos Tributos",
+    "EBITDA": "Resultado Operacional + Depreciação + Amortização",
     "Percentual Capital Terceiros": "(Passivo Circulante + Não Circulante) ÷ Total Passivo",
     "Percentual Capital Próprio": "Patrimônio Líquido ÷ Total Passivo"
 }
@@ -1161,10 +1258,8 @@ with col2:
 st.sidebar.divider()
 st.sidebar.header("ℹ️ Informações")
 st.sidebar.info(
-    "Indicadores financeiros "
-    "calculados conforme livro "
-    "Análise das Demonstrações"
-    "Financeira (VELLANI, 2024)"
+    "Este dashboard apresenta os principais indicadores financeiros "
+    "calculados conforme metodologia Vellani (2024)"
 )
 
 # Rodapé
@@ -1186,14 +1281,18 @@ with st.sidebar.expander("💡 Metodologia livro Vellani (2024)"):
     - **RESULTADO:** Lucro Econômico 1 = Lucro Econômico 2
 
     **EBITDA Corrigido:**
-    - EBITDA = Resultado Antes do Resultado Financeiro e dos Tributos
-    - REMOVIDO: ROI EBITDA (não existe na metodologia Vellani)
+    - Hierarquia de cálculo baseada no dataset dff_2010_2024:
+      1. 'Depreciação e amortização' (coluna consolidada)
+      2. 'Depreciação' + 'Amortização' (soma das colunas separadas)
+      3. 'Depreciação' (apenas)
+      4. Aproximação (Resultado Operacional)
+    - Considera valores negativos de depreciação/amortização (correto)
 
-    **Novos Gráficos de Evolução Temporal:**
-    - Análise histórica dos indicadores por empresa
-    - Evolução setorial ao longo dos anos
-    - Comparativos de tendências
-    - **LUCRO ECONÔMICO:** Evolução temporal completa
+    **Dataset: dff_2010_2024**
+    - Período: 2010-2024 (15 anos)
+    - Empresas: 253 únicas
+    - Tickers: 317 únicos
+    - Setores: 43 categorias
     """)
 
 # FIM DO SCRIPT
