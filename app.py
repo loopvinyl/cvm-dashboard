@@ -828,7 +828,7 @@ st.divider()
 st.caption(f"📊 Dashboard CVM - Indicadores Financeiros | Dados atualizados para {ano_selecionado} | Total de empresas na base: {df['Ticker'].nunique()}")
 
 # Adicionar informações sobre os cálculos
-with st.sidebar.expander("💡 Metodologia CPFE3 - VERSÃO FINAL CORRIGIDA"):
+with st.sidebar.expander("💡 Metodologia livro Vellani (2024)"):
     st.write("""
     **CORREÇÕES APLICADAS:**
 
