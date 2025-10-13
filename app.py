@@ -22,9 +22,11 @@ def configurar_locale_brasil():
         try:
             locale.setlocale(locale.LC_ALL, 'Portuguese_Brazil.1252')
         except:
-            # Não exibe mais o warning, apenas ignora
+            # Remove o warning, apenas ignora silenciosamente
             pass
-            
+
+configurar_locale_brasil()
+
 # Funções de formatação brasileira
 def formatar_numero_brasil(valor, casas_decimais=0):
     """
@@ -34,11 +36,12 @@ def formatar_numero_brasil(valor, casas_decimais=0):
         return "N/A"
     
     try:
-        if abs(valor) >= 1e6:  # Para valores muito grandes, converter para milhões/bilhões
-            if abs(valor) >= 1e9:
-                return f"R$ {valor/1e9:,.2f} Bi".replace(",", "X").replace(".", ",").replace("X", ".")
-            else:
-                return f"R$ {valor/1e6:,.2f} Mi".replace(",", "X").replace(".", ",").replace("X", ".")
+        if abs(valor) >= 1e12:  # Trilhões
+            return f"{valor/1e12:,.2f} tri".replace(",", "X").replace(".", ",").replace("X", ".")
+        elif abs(valor) >= 1e9:  # Bilhões
+            return f"{valor/1e9:,.2f} bi".replace(",", "X").replace(".", ",").replace("X", ".")
+        elif abs(valor) >= 1e6:  # Milhões
+            return f"{valor/1e6:,.2f} mi".replace(",", "X").replace(".", ",").replace("X", ".")
         elif casas_decimais == 0:
             return f"{valor:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
         else:
@@ -54,11 +57,12 @@ def formatar_moeda_brasil(valor, casas_decimais=0):
         return "R$ -"
     
     try:
-        if abs(valor) >= 1e6:  # Para valores muito grandes, converter para milhões/bilhões
-            if abs(valor) >= 1e9:
-                return f"R$ {valor/1e9:,.2f} Bi".replace(",", "X").replace(".", ",").replace("X", ".")
-            else:
-                return f"R$ {valor/1e6:,.2f} Mi".replace(",", "X").replace(".", ",").replace("X", ".")
+        if abs(valor) >= 1e12:  # Trilhões
+            return f"R$ {valor/1e12:,.2f} tri".replace(",", "X").replace(".", ",").replace("X", ".")
+        elif abs(valor) >= 1e9:  # Bilhões
+            return f"R$ {valor/1e9:,.2f} bi".replace(",", "X").replace(".", ",").replace("X", ".")
+        elif abs(valor) >= 1e6:  # Milhões
+            return f"R$ {valor/1e6:,.2f} mi".replace(",", "X").replace(".", ",").replace("X", ".")
         elif casas_decimais == 0:
             return f"R$ {valor:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
         else:
@@ -140,11 +144,6 @@ def load_data():
     # Ler o Excel
     df = pd.read_excel(data_path)
     df.columns = [c.strip() for c in df.columns]
-
-    # =============================================================
-    # AVISO SOBRE ESCALA DOS VALORES
-    # =============================================================
-    st.sidebar.info("💡 **Nota:** Todos os valores financeiros estão em **R$ mil**")
 
     # =============================================================
     # MAPEAMENTO EXATO DAS CONTAS (compatível com dff_2010_2024)
@@ -490,14 +489,14 @@ if modo_analise == "🏆 Ranking Comparativo":
         st.metric("Setores Representados", setores_ativos)
     
     with col3:
-        # VALORES JÁ ESTÃO EM R$ MIL - CONVERTER PARA BILHÕES
-        receita_total = df_filtrado["Receita de Venda de Bens e/ou Serviços"].sum() / 1e6
-        st.metric("Receita Total (R$ Bi)", formatar_moeda_brasil(receita_total, 2))
+        # VALORES JÁ ESTÃO EM R$ MIL - CONVERTER PARA TRILHÕES
+        receita_total = df_filtrado["Receita de Venda de Bens e/ou Serviços"].sum() / 1e9
+        st.metric("Receita Total (R$ Tri)", formatar_moeda_brasil(receita_total, 2))
     
     with col4:
-        # VALORES JÁ ESTÃO EM R$ MIL - CONVERTER PARA BILHÕES
-        lucro_total = df_filtrado["Lucro/Prejuízo Consolidado do Período"].sum() / 1e6
-        st.metric("Lucro Total (R$ Bi)", formatar_moeda_brasil(lucro_total, 2))
+        # VALORES JÁ ESTÃO EM R$ MIL - CONVERTER PARA TRILHÕES
+        lucro_total = df_filtrado["Lucro/Prejuízo Consolidado do Período"].sum() / 1e9
+        st.metric("Lucro Total (R$ Tri)", formatar_moeda_brasil(lucro_total, 2))
     
     st.divider()
     
@@ -557,11 +556,11 @@ if modo_analise == "🏆 Ranking Comparativo":
             lucro_ranking = df_filtrado.nlargest(15, "Lucro/Prejuízo Consolidado do Período")[["Ticker", "SETOR_ATIV", "Lucro/Prejuízo Consolidado do Período"]]
             
             if not lucro_ranking.empty:
-                # VALORES JÁ ESTÃO EM R$ MIL - CONVERTER PARA MILHÕES
-                lucro_ranking["Lucro (R$ Mi)"] = lucro_ranking["Lucro/Prejuízo Consolidado do Período"] / 1e3
-                fig_lucro_rank = px.bar(lucro_ranking, x="Ticker", y="Lucro (R$ Mi)", color="SETOR_ATIV",
+                # VALORES JÁ ESTÃO EM R$ MIL - CONVERTER PARA TRILHÕES
+                lucro_ranking["Lucro (R$ Tri)"] = lucro_ranking["Lucro/Prejuízo Consolidado do Período"] / 1e9
+                fig_lucro_rank = px.bar(lucro_ranking, x="Ticker", y="Lucro (R$ Tri)", color="SETOR_ATIV",
                                       title="Ranking por Lucro Líquido")
-                fig_lucro_rank.update_layout(yaxis_tickformat=',.0f')
+                fig_lucro_rank.update_layout(yaxis_tickformat=',.3f')
                 st.plotly_chart(fig_lucro_rank, use_container_width=True)
             else:
                 st.warning("Não há dados de lucro disponíveis para ranking")
@@ -571,11 +570,11 @@ if modo_analise == "🏆 Ranking Comparativo":
             receita_ranking = df_filtrado.nlargest(15, "Receita de Venda de Bens e/ou Serviços")[["Ticker", "SETOR_ATIV", "Receita de Venda de Bens e/ou Serviços"]]
             
             if not receita_ranking.empty:
-                # VALORES JÁ ESTÃO EM R$ MIL - CONVERTER PARA BILHÕES
-                receita_ranking["Receita (R$ Bi)"] = receita_ranking["Receita de Venda de Bens e/ou Serviços"] / 1e6
-                fig_receita_rank = px.bar(receita_ranking, x="Ticker", y="Receita (R$ Bi)", color="SETOR_ATIV",
+                # VALORES JÁ ESTÃO EM R$ MIL - CONVERTER PARA TRILHÕES
+                receita_ranking["Receita (R$ Tri)"] = receita_ranking["Receita de Venda de Bens e/ou Serviços"] / 1e9
+                fig_receita_rank = px.bar(receita_ranking, x="Ticker", y="Receita (R$ Tri)", color="SETOR_ATIV",
                                         title="Ranking por Receita")
-                fig_receita_rank.update_layout(yaxis_tickformat=',.2f')
+                fig_receita_rank.update_layout(yaxis_tickformat=',.3f')
                 st.plotly_chart(fig_receita_rank, use_container_width=True)
             else:
                 st.warning("Não há dados de receita disponíveis para ranking")
@@ -588,11 +587,11 @@ if modo_analise == "🏆 Ranking Comparativo":
             pl_ranking = df_filtrado.nlargest(15, "Patrimônio Líquido Consolidado")[["Ticker", "SETOR_ATIV", "Patrimônio Líquido Consolidado"]]
             
             if not pl_ranking.empty:
-                # VALORES JÁ ESTÃO EM R$ MIL - CONVERTER PARA BILHÕES
-                pl_ranking["PL (R$ Bi)"] = pl_ranking["Patrimônio Líquido Consolidado"] / 1e6
-                fig_pl_rank = px.bar(pl_ranking, x="Ticker", y="PL (R$ Bi)", color="SETOR_ATIV",
+                # VALORES JÁ ESTÃO EM R$ MIL - CONVERTER PARA TRILHÕES
+                pl_ranking["PL (R$ Tri)"] = pl_ranking["Patrimônio Líquido Consolidado"] / 1e9
+                fig_pl_rank = px.bar(pl_ranking, x="Ticker", y="PL (R$ Tri)", color="SETOR_ATIV",
                                    title="Ranking de Patrimônio Líquido")
-                fig_pl_rank.update_layout(yaxis_tickformat=',.2f')
+                fig_pl_rank.update_layout(yaxis_tickformat=',.3f')
                 st.plotly_chart(fig_pl_rank, use_container_width=True)
             else:
                 st.warning("Não há dados de patrimônio líquido disponíveis para ranking")
@@ -698,14 +697,14 @@ elif modo_analise == "📈 Visão por Empresa":
                     if diferenca <= tolerancia:
                         st.success("✅ LUCRO ECONÔMICO 1 = LUCRO ECONÔMICO 2")
                         # VALORES JÁ ESTÃO EM R$ MIL - EXIBIR DIRETAMENTE
-                        st.write(f"Lucro Econômico 1: {formatar_moeda_brasil(lucro_eco1, 0)} mil")
-                        st.write(f"Lucro Econômico 2: {formatar_moeda_brasil(lucro_eco2, 0)} mil")
-                        st.write(f"Diferença: {formatar_moeda_brasil(diferenca, 2)} mil (dentro da tolerância)")
+                        st.write(f"Lucro Econômico 1: {formatar_moeda_brasil(lucro_eco1, 0)}")
+                        st.write(f"Lucro Econômico 2: {formatar_moeda_brasil(lucro_eco2, 0)}")
+                        st.write(f"Diferença: {formatar_moeda_brasil(diferenca, 2)} (dentro da tolerância)")
                     else:
                         st.error("❌ LUCRO ECONÔMICO 1 ≠ LUCRO ECONÔMICO 2")
-                        st.write(f"Lucro Econômico 1: {formatar_moeda_brasil(lucro_eco1, 0)} mil")
-                        st.write(f"Lucro Econômico 2: {formatar_moeda_brasil(lucro_eco2, 0)} mil")
-                        st.write(f"Diferença: {formatar_moeda_brasil(diferenca, 0)} mil")
+                        st.write(f"Lucro Econômico 1: {formatar_moeda_brasil(lucro_eco1, 0)}")
+                        st.write(f"Lucro Econômico 2: {formatar_moeda_brasil(lucro_eco2, 0)}")
+                        st.write(f"Diferença: {formatar_moeda_brasil(diferenca, 0)}")
                 else:
                     st.info("ℹ️ Dados de Lucro Econômico não disponíveis para verificação")
                 
@@ -763,7 +762,6 @@ elif modo_analise == "📈 Visão por Empresa":
                         col1, col2 = st.columns(2)
                         
                         with col1:
-                            # VALORES JÁ ESTÃO EM R$ MIL - EXIBIR DIRETAMENTE
                             st.metric("EBITDA", formatar_moeda_brasil(ebitda_valor, 0))
                             
                         with col2:
@@ -782,13 +780,13 @@ elif modo_analise == "📈 Visão por Empresa":
                         if nome_coluna_da_filtrado and pd.notna(df_filtrado[nome_coluna_da_filtrado].iloc[0]):
                             depreciacao_amortizacao = df_filtrado[nome_coluna_da_filtrado].iloc[0]
                             depreciacao_amortizacao_abs = abs(depreciacao_amortizacao)
-                            st.write(f"**Resultado Operacional:** {formatar_moeda_brasil(resultado_operacional, 0)} mil")
-                            st.write(f"**Depreciação e Amortização:** {formatar_moeda_brasil(depreciacao_amortizacao_abs, 0)} mil")
+                            st.write(f"**Resultado Operacional:** {formatar_moeda_brasil(resultado_operacional, 0)}")
+                            st.write(f"**Depreciação e Amortização:** {formatar_moeda_brasil(depreciacao_amortizacao_abs, 0)}")
                             st.write(f"**EBITDA = Resultado Operacional + Depreciação e Amortização**")
-                            st.write(f"**EBITDA =** {formatar_moeda_brasil(resultado_operacional, 0)} mil + {formatar_moeda_brasil(depreciacao_amortizacao_abs, 0)} mil = **{formatar_moeda_brasil(ebitda_valor, 0)} mil**")
+                            st.write(f"**EBITDA =** {formatar_moeda_brasil(resultado_operacional, 0)} + {formatar_moeda_brasil(depreciacao_amortizacao_abs, 0)} = **{formatar_moeda_brasil(ebitda_valor, 0)}**")
                         else:
                             st.info("ℹ️ Dados de Depreciação/Amortização não disponíveis. EBITDA calculado como aproximação do Resultado Operacional.")
-                            st.write(f"**EBITDA ≈ Resultado Operacional = {formatar_moeda_brasil(ebitda_valor, 0)} mil**")
+                            st.write(f"**EBITDA ≈ Resultado Operacional = {formatar_moeda_brasil(ebitda_valor, 0)}**")
                         
                         # =============================================================
                         # 🏦 SEÇÃO CORRIGIDA: VALUATION POR LUCRO ECONÔMICO/SELIC
@@ -845,12 +843,10 @@ elif modo_analise == "📈 Visão por Empresa":
                                     )
                                 
                                 with col_val2:
-                                    # Converter para bilhões para melhor visualização
-                                    valor_empresa_bi = valor_empresa_reais / 1e9
                                     st.metric(
-                                        "Valor da Empresa (R$ Bi)",
-                                        formatar_moeda_brasil(valor_empresa_bi, 2),
-                                        help="Valor em bilhões de reais"
+                                        "Valor da Empresa (R$ Tri)",
+                                        formatar_moeda_brasil(valor_empresa_reais, 0),
+                                        help="Valor em trilhões de reais"
                                     )
                                 
                                 with col_val3:
@@ -886,10 +882,10 @@ elif modo_analise == "📈 Visão por Empresa":
                                 **📊 Fórmula do Valuation (CORRIGIDA):**
                                 ```
                                 Valor da Empresa = Lucro Econômico ÷ (SELIC/100)
-                                Valor da Empresa = {formatar_moeda_brasil(lucro_economico_valor, 0)} mil ÷ ({selic_percentual}%/100)
-                                Valor da Empresa = {formatar_moeda_brasil(lucro_economico_valor, 0)} mil ÷ {selic_percentual/100:.3f}
-                                Valor da Empresa = {formatar_moeda_brasil(valor_empresa, 0)} mil
-                                Valor da Empresa (R$) = {formatar_moeda_brasil(valor_empresa, 0)} mil × 1.000 = {formatar_moeda_brasil(valor_empresa_reais, 0)}
+                                Valor da Empresa = {formatar_moeda_brasil(lucro_economico_valor, 0)} ÷ ({selic_percentual}%/100)
+                                Valor da Empresa = {formatar_moeda_brasil(lucro_economico_valor, 0)} ÷ {selic_percentual/100:.3f}
+                                Valor da Empresa = {formatar_moeda_brasil(valor_empresa, 0)}
+                                Valor da Empresa (R$) = {formatar_moeda_brasil(valor_empresa, 0)} × 1.000 = {formatar_moeda_brasil(valor_empresa_reais, 0)}
                                 ```
                                 """)
                                 
@@ -907,9 +903,9 @@ elif modo_analise == "📈 Visão por Empresa":
                                 if ebitda_valor:
                                     st.info(f"""
                                     **📈 Dados de Referência:**
-                                    - **EBITDA:** {formatar_moeda_brasil(ebitda_valor, 0)} mil
-                                    - **Lucro Econômico:** {formatar_moeda_brasil(lucro_economico_valor, 0)} mil
-                                    - **Investimento Médio:** {formatar_moeda_brasil(df_filtrado['Investimento Médio'].iloc[0], 0)} mil
+                                    - **EBITDA:** {formatar_moeda_brasil(ebitda_valor, 0)}
+                                    - **Lucro Econômico:** {formatar_moeda_brasil(lucro_economico_valor, 0)}
+                                    - **Investimento Médio:** {formatar_moeda_brasil(df_filtrado['Investimento Médio'].iloc[0], 0)}
                                     - **ROI:** {formatar_percentual_brasil(df_filtrado['ROI'].iloc[0], 2)}
                                     - **WACC:** {formatar_percentual_brasil(df_filtrado['wacc'].iloc[0], 2)}
                                     """)
@@ -939,15 +935,15 @@ elif modo_analise == "📈 Visão por Empresa":
                                     
                                     with col_info4:
                                         if dados_cotacao['market_cap']:
-                                            market_cap_bi = dados_cotacao['market_cap'] / 1e9
-                                            st.metric("Market Cap", formatar_moeda_brasil(market_cap_bi, 2))
+                                            market_cap_tri = dados_cotacao['market_cap'] / 1e12
+                                            st.metric("Market Cap", formatar_moeda_brasil(market_cap_tri, 2))
                                     
                                     # Análise de valuation implícito
                                     st.write("**💡 Interpretação:**")
                                     
                                     if cotacao_esperada:
                                         st.write(f"""
-                                        - **Lucro Econômico Anual:** {formatar_moeda_brasil(lucro_economico_valor, 0)} mil ({formatar_moeda_brasil(lucro_economico_valor * 1000, 0)})
+                                        - **Lucro Econômico Anual:** {formatar_moeda_brasil(lucro_economico_valor, 0)} ({formatar_moeda_brasil(lucro_economico_valor * 1000, 0)})
                                         - **Taxa de Desconto (SELIC):** {selic_percentual}% a.a.
                                         - **Valor Justo Calculado:** {formatar_moeda_brasil(valor_empresa_reais, 0)}
                                         - **Número de Ações:** {formatar_numero_brasil(numero_acoes, 0)}
@@ -957,7 +953,7 @@ elif modo_analise == "📈 Visão por Empresa":
                                         """)
                                     else:
                                         st.write(f"""
-                                        - **Lucro Econômico Anual:** {formatar_moeda_brasil(lucro_economico_valor, 0)} mil ({formatar_moeda_brasil(lucro_economico_valor * 1000, 0)})
+                                        - **Lucro Econômico Anual:** {formatar_moeda_brasil(lucro_economico_valor, 0)} ({formatar_moeda_brasil(lucro_economico_valor * 1000, 0)})
                                         - **Taxa de Desconto (SELIC):** {selic_percentual}% a.a.
                                         - **Valor Justo Calculado:** {formatar_moeda_brasil(valor_empresa_reais, 0)}
                                         - **Cotação Atual ({dados_cotacao['data_atualizacao']}):** {formatar_moeda_brasil(dados_cotacao['cotacao'], 2)}
@@ -1084,27 +1080,26 @@ elif modo_analise == "📈 Visão por Empresa":
                         if col in df_filtrado.columns:
                             valor = df_filtrado[col].iloc[0]
                             if pd.notna(valor):
-                                # VALORES JÁ ESTÃO EM R$ MIL - EXIBIR DIRETAMENTE
                                 lucro_data.append({
                                     "Indicador": col,
-                                    "Valor (R$ Mil)": formatar_moeda_brasil(valor, 0),
+                                    "Valor": formatar_moeda_brasil(valor, 0),
                                     "Status": "✓"
                                 })
                             else:
                                 lucro_data.append({
                                     "Indicador": f"{col}*",
-                                    "Valor (R$ Mil)": "Não calculado",
+                                    "Valor": "Não calculado",
                                     "Status": "✗"
                                 })
                     
                     if lucro_data:
                         lucro_df = pd.DataFrame(lucro_data)
-                        st.dataframe(lucro_df[["Indicador", "Valor (R$ Mil)"]], use_container_width=True, hide_index=True)
+                        st.dataframe(lucro_df[["Indicador", "Valor"]], use_container_width=True, hide_index=True)
                     else:
                         st.warning("Não há dados de lucro econômico disponíveis")
                 
                 with tab6:
-                    st.subheader("Dados Financeiros Brutos (R$ Mil)")
+                    st.subheader("Dados Financeiros Brutos")
                     dados_brutos_cols = [
                         "Receita de Venda de Bens e/ou Serviços",
                         "Resultado Bruto", 
@@ -1133,12 +1128,11 @@ elif modo_analise == "📈 Visão por Empresa":
                         if col in df_filtrado.columns:
                             valor = df_filtrado[col].iloc[0]
                             if pd.notna(valor):
-                                # VALORES JÁ ESTÃO EM R$ MIL - MANTER COMO ESTÁ
                                 dados_brutos[col] = formatar_moeda_brasil(valor, 0)
                             else:
                                 dados_brutos[col] = "N/A"
                     
-                    st.dataframe(pd.DataFrame.from_dict(dados_brutos, orient='index', columns=['Valor (R$ Mil)']), 
+                    st.dataframe(pd.DataFrame.from_dict(dados_brutos, orient='index', columns=['Valor']), 
                                use_container_width=True)
             
             else:
@@ -1292,7 +1286,6 @@ elif modo_analise == "📈 Visão por Empresa":
                         if indicador in df_empresa_todos_anos.columns:
                             dados_validos = df_empresa_todos_anos[df_empresa_todos_anos[indicador].notna()]
                             if not dados_validos.empty:
-                                # VALORES JÁ ESTÃO EM R$ MIL - EXIBIR DIRETAMENTE
                                 fig_lucro_absoluto.add_trace(go.Scatter(
                                     x=dados_validos['Ano'],
                                     y=dados_validos[indicador],
@@ -1305,7 +1298,7 @@ elif modo_analise == "📈 Visão por Empresa":
                     fig_lucro_absoluto.update_layout(
                         title='Lucro Econômico (Valores Absolutos)',
                         xaxis_title='Ano',
-                        yaxis_title='Valor (R$ Mil)',
+                        yaxis_title='Valor',
                         yaxis_tickformat=',.0f',
                         height=400,
                         showlegend=True
@@ -1324,7 +1317,6 @@ elif modo_analise == "📈 Visão por Empresa":
                         if indicador in df_empresa_todos_anos.columns:
                             dados_validos = df_empresa_todos_anos[df_empresa_todos_anos[indicador].notna()]
                             if not dados_validos.empty:
-                                # VALORES JÁ ESTÃO EM R$ MIL - EXIBIR DIRETAMENTE
                                 fig_ebitda.add_trace(go.Scatter(
                                     x=dados_validos['Ano'],
                                     y=dados_validos[indicador],
@@ -1337,7 +1329,7 @@ elif modo_analise == "📈 Visão por Empresa":
                     fig_ebitda.update_layout(
                         title='EBITDA vs Resultado Operacional',
                         xaxis_title='Ano',
-                        yaxis_title='Valor (R$ Mil)',
+                        yaxis_title='Valor',
                         yaxis_tickformat=',.0f',
                         height=400,
                         showlegend=True
@@ -1357,7 +1349,6 @@ elif modo_analise == "📈 Visão por Empresa":
                     if coluna in ['ROE', 'ROA', 'ROI', 'Margem Líquida', 'wacc', 'Percentual Capital Próprio']:
                         return formatar_percentual_brasil(valor, 2) if pd.notna(valor) else "N/A"
                     elif coluna in ['Lucro Econômico 1', 'Resultado Antes do Resultado Financeiro e dos Tributos', 'EBITDA']:
-                        # VALORES JÁ ESTÃO EM R$ MIL - EXIBIR DIRETAMENTE
                         return formatar_moeda_brasil(valor, 0) if pd.notna(valor) else "N/A"
                     else:
                         return valor
@@ -1395,19 +1386,19 @@ elif modo_analise == "🏭 Análise Setorial":
                     st.metric("Empresas no Setor", empresas_setor)
                 
                 with col2:
-                    # VALORES JÁ ESTÃO EM R$ MIL - CONVERTER PARA BILHÕES
-                    receita_setor = df_filtrado["Receita de Venda de Bens e/ou Serviços"].sum() / 1e6
-                    st.metric("Receita Total (R$ Bi)", formatar_moeda_brasil(receita_setor, 2))
+                    # VALORES JÁ ESTÃO EM R$ MIL - CONVERTER PARA TRILHÕES
+                    receita_setor = df_filtrado["Receita de Venda de Bens e/ou Serviços"].sum() / 1e9
+                    st.metric("Receita Total (R$ Tri)", formatar_moeda_brasil(receita_setor, 2))
                 
                 with col3:
-                    # VALORES JÁ ESTÃO EM R$ MIL - CONVERTER PARA BILHÕES
-                    lucro_setor = df_filtrado["Lucro/Prejuízo Consolidado do Período"].sum() / 1e6
-                    st.metric("Lucro Total (R$ Bi)", formatar_moeda_brasil(lucro_setor, 2))
+                    # VALORES JÁ ESTÃO EM R$ MIL - CONVERTER PARA TRILHÕES
+                    lucro_setor = df_filtrado["Lucro/Prejuízo Consolidado do Período"].sum() / 1e9
+                    st.metric("Lucro Total (R$ Tri)", formatar_moeda_brasil(lucro_setor, 2))
                 
                 with col4:
-                    # VALORES JÁ ESTÃO EM R$ MIL - CONVERTER PARA BILHÕES
-                    pl_setor = df_filtrado["Patrimônio Líquido Consolidado"].sum() / 1e6
-                    st.metric("Patrimônio Líquido (R$ Bi)", formatar_moeda_brasil(pl_setor, 2))
+                    # VALORES JÁ ESTÃO EM R$ MIL - CONVERTER PARA TRILHÕES
+                    pl_setor = df_filtrado["Patrimônio Líquido Consolidado"].sum() / 1e9
+                    st.metric("Patrimônio Líquido (R$ Tri)", formatar_moeda_brasil(pl_setor, 2))
                 
                 st.divider()
                 
@@ -1542,7 +1533,7 @@ elif modo_analise == "🏭 Análise Setorial":
                         fig_setor_lucro = px.line(df_setor_evolucao, x='Ano', y='Lucro Econômico 1',
                                                 title='Lucro Econômico Médio do Setor (Mediana)')
                         fig_setor_lucro.update_layout(
-                            yaxis_title='Lucro Econômico (R$ Mil)',
+                            yaxis_title='Lucro Econômico',
                             yaxis_tickformat=',.0f',
                             height=400
                         )
@@ -1554,7 +1545,7 @@ elif modo_analise == "🏭 Análise Setorial":
                         fig_setor_ebitda = px.line(df_setor_evolucao, x='Ano', y='EBITDA',
                                                  title='EBITDA Médio do Setor (Mediana)')
                         fig_setor_ebitda.update_layout(
-                            yaxis_title='EBITDA (R$ Mil)',
+                            yaxis_title='EBITDA',
                             yaxis_tickformat=',.0f',
                             height=400
                         )
@@ -1568,7 +1559,6 @@ elif modo_analise == "🏭 Análise Setorial":
                     if coluna in ['ROE', 'ROA', 'ROI', 'Margem Líquida', 'wacc', 'Percentual Capital Próprio']:
                         return formatar_percentual_brasil(valor, 2) if pd.notna(valor) else "N/A"
                     elif coluna in ['Lucro Econômico 1', 'EBITDA']:
-                        # VALORES JÁ ESTÃO EM R$ MIL - EXIBIR DIRETAMENTE
                         return formatar_moeda_brasil(valor, 0) if pd.notna(valor) else "N/A"
                     else:
                         return valor
@@ -1668,7 +1658,6 @@ with st.sidebar.expander("💡 Metodologia livro Vellani (2024)"):
     - **EXCLUSIVAMENTE** usando a coluna 'Depreciação e amortização'
     - **CORREÇÃO:** Usa valores absolutos para depreciação/amortização para garantir cálculo correto
     - **FÓRMULA:** EBITDA = Resultado Operacional + |Depreciação e Amortização|
-    - **ESCALA:** Todos os valores estão em R$ mil
 
     **Valuation Lucro Econômico/SELIC (CORRIGIDO):**
     - **FÓRMULA CORRETA:** Valor da Empresa = Lucro Econômico ÷ (SELIC/100)
@@ -1682,6 +1671,5 @@ with st.sidebar.expander("💡 Metodologia livro Vellani (2024)"):
     - Empresas: 253 únicas
     - Tickers: 317 únicos
     - Setores: 43 categorias
-    - **ESCALA DOS VALORES:** R$ mil
     - **NÚMERO DE AÇÕES:** Disponível apenas para 2024
     """)
