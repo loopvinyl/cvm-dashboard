@@ -1,5 +1,5 @@
 # ==============================================================
-# 📊 DASHBOARD CVM - Indicadores Financeiros (VERSÃO COM ESCALAS CORRIGIDAS)
+# 📊 DASHBOARD CVM - Indicadores Financeiros (VERSÃO COMPLETA COM ANÁLISES AVANÇADAS)
 # ==============================================================
 import streamlit as st
 import pandas as pd
@@ -844,20 +844,63 @@ elif modo_analise == "📈 Visão por Empresa":
                                 # Buscar cotação atual
                                 dados_cotacao = buscar_cotacao_atual(ticker_selecionado)
                                 
+                                # CÁLCULO DA SELIC IMPLÍCITA (NOVO)
+                                selic_implicita = None
+                                market_cap_atual = None
+                                if dados_cotacao and numero_acoes and numero_acoes > 0:
+                                    market_cap_atual = dados_cotacao['cotacao'] * numero_acoes
+                                    if lucro_economico_valor > 0:
+                                        # Fórmula: SELIC implícita = (Lucro Econômico / Market Cap) × 100
+                                        selic_implicita = (lucro_economico_valor * 1000 / market_cap_atual) * 100
+                                
+                                # CÁLCULO DO EBITDA NECESSÁRIO (NOVO)
+                                ebitda_necessario = None
+                                if dados_cotacao and numero_acoes and numero_acoes > 0:
+                                    # Fórmula: EBITDA necessário = (Market Cap × (SELIC/100) + DA + WACC × Investimento) / (1 - relação EBITDA/Lucro Econ)
+                                    # Simplificação: Vamos usar uma aproximação baseada na margem operacional atual
+                                    investimento_medio = df_filtrado["Investimento Médio"].iloc[0] if pd.notna(df_filtrado["Investimento Médio"].iloc[0]) else 0
+                                    wacc = df_filtrado["wacc"].iloc[0] if pd.notna(df_filtrado["wacc"].iloc[0]) else 0
+                                    
+                                    # Encontrar depreciação e amortização
+                                    nome_coluna_da = None
+                                    for col in df_filtrado.columns:
+                                        if 'depreciação' in col.lower() and 'amortização' in col.lower():
+                                            nome_coluna_da = col
+                                            break
+                                    
+                                    depreciacao_amortizacao = 0
+                                    if nome_coluna_da and pd.notna(df_filtrado[nome_coluna_da].iloc[0]):
+                                        depreciacao_amortizacao = abs(df_filtrado[nome_coluna_da].iloc[0])
+                                    
+                                    # Calcular relação atual entre EBITDA e Lucro Econômico
+                                    ebitda_atual = df_filtrado["EBITDA"].iloc[0] if pd.notna(df_filtrado["EBITDA"].iloc[0]) else 0
+                                    if ebitda_atual > 0 and lucro_economico_valor > 0:
+                                        relacao_ebitda_lucro_eco = ebitda_atual / lucro_economico_valor
+                                    else:
+                                        # Se não temos dados, usar uma relação conservadora de 2:1
+                                        relacao_ebitda_lucro_eco = 2.0
+                                    
+                                    # Cálculo do EBITDA necessário
+                                    # Lucro Econômico necessário = Market Cap × (SELIC/100)
+                                    lucro_economico_necessario = market_cap_atual * (selic_percentual / 100) / 1000  # Dividir por 1000 para voltar para R$ mil
+                                    
+                                    # EBITDA necessário = Lucro Econômico necessário × relação EBITDA/Lucro Econ
+                                    ebitda_necessario = lucro_economico_necessario * relacao_ebitda_lucro_eco
+                                
                                 # Exibir resultados do valuation
                                 col_val1, col_val2, col_val3, col_val4 = st.columns(4)
                                 
                                 with col_val1:
                                     st.metric(
                                         "Valor da Empresa (EV)",
-                                        formatar_moeda_brasil_correta(valor_empresa_reais / 1000),  # Dividir por 1000 pois a função espera R$ mil
+                                        formatar_moeda_brasil_correta(valor_empresa_reais / 1000),
                                         help="EV = Lucro Econômico ÷ (SELIC/100) - Convertido para R$"
                                     )
                                 
                                 with col_val2:
                                     st.metric(
                                         "Valor da Empresa",
-                                        formatar_moeda_brasil_correta(valor_empresa_reais / 1000),  # Dividir por 1000 pois a função espera R$ mil
+                                        formatar_moeda_brasil_correta(valor_empresa_reais / 1000),
                                         help="Valor da empresa"
                                     )
                                 
@@ -911,10 +954,71 @@ elif modo_analise == "📈 Visão por Empresa":
                                     ```
                                     """)
                                 
+                                # NOVO: CÁLCULO DA SELIC IMPLÍCITA
+                                if selic_implicita is not None:
+                                    st.info(f"""
+                                    **🎯 SELIC Implícita (Para igualar à cotação atual):**
+                                    ```
+                                    Market Cap Atual = Cotação Atual × Número de Ações
+                                    Market Cap Atual = R$ {dados_cotacao['cotacao']:,.2f} × {formatar_numero_brasil_correto(numero_acoes, 0)}
+                                    Market Cap Atual = {formatar_moeda_brasil_correta(market_cap_atual / 1000)}
+                                    
+                                    SELIC Implícita = (Lucro Econômico ÷ Market Cap Atual) × 100
+                                    SELIC Implícita = ({formatar_moeda_brasil_correta(lucro_economico_valor)} ÷ {formatar_moeda_brasil_correta(market_cap_atual / 1000)}) × 100
+                                    SELIC Implícita = {selic_implicita:.1f}%
+                                    ```
+                                    
+                                    **💡 Interpretação:**
+                                    - Para que a **cotação esperada** seja igual à **cotação atual** (R$ {dados_cotacao['cotacao']:,.2f})
+                                    - A **SELIC** deveria ser de **{selic_implicita:.1f}%** a.a.
+                                    - Isso significa que o mercado está precificando a empresa como se a taxa de desconto fosse {selic_implicita:.1f}% a.a.
+                                    """)
+                                    
+                                    # Análise da SELIC implícita
+                                    if selic_implicita < selic_percentual:
+                                        st.success(f"**✅ SELIC Implícita ({selic_implicita:.1f}%) < SELIC Atual ({selic_percentual}%)**")
+                                        st.write("O mercado está exigindo uma taxa de retorno **menor** que a SELIC atual, indicando **confiança** na empresa.")
+                                    else:
+                                        st.warning(f"**⚠️ SELIC Implícita ({selic_implicita:.1f}%) > SELIC Atual ({selic_percentual}%)**")
+                                        st.write("O mercado está exigindo uma taxa de retorno **maior** que a SELIC atual, indicando **mais risco** percebido na empresa.")
+                                
+                                # NOVO: CÁLCULO DO EBITDA NECESSÁRIO
+                                if ebitda_necessario is not None and ebitda_necessario > 0:
+                                    ebitda_atual = df_filtrado["EBITDA"].iloc[0] if pd.notna(df_filtrado["EBITDA"].iloc[0]) else 0
+                                    variacao_necessaria = ((ebitda_necessario - ebitda_atual) / ebitda_atual) * 100
+                                    
+                                    st.info(f"""
+                                    **📈 EBITDA Necessário (Para igualar à cotação atual com SELIC {selic_percentual}%):**
+                                    ```
+                                    Market Cap Atual = {formatar_moeda_brasil_correta(market_cap_atual / 1000)}
+                                    Lucro Econômico Necessário = Market Cap × (SELIC/100)
+                                    Lucro Econômico Necessário = {formatar_moeda_brasil_correta(market_cap_atual / 1000)} × ({selic_percentual}%/100)
+                                    Lucro Econômico Necessário = {formatar_moeda_brasil_correta(lucro_economico_necessario)}
+                                    
+                                    EBITDA Necessário = Lucro Econômico Necessário × (EBITDA Atual ÷ Lucro Econ Atual)
+                                    EBITDA Necessário = {formatar_moeda_brasil_correta(lucro_economico_necessario)} × ({formatar_moeda_brasil_correta(ebitda_atual)} ÷ {formatar_moeda_brasil_correta(lucro_economico_valor)})
+                                    EBITDA Necessário = {formatar_moeda_brasil_correta(ebitda_necessario)}
+                                    ```
+                                    
+                                    **💡 Interpretação:**
+                                    - Para justificar a **cotação atual** (R$ {dados_cotacao['cotacao']:,.2f}) com **SELIC atual** ({selic_percentual}%)
+                                    - A empresa precisaria ter um **EBITDA** de **{formatar_moeda_brasil_correta(ebitda_necessario)}**
+                                    - EBITDA Atual: {formatar_moeda_brasil_correta(ebitda_atual)}
+                                    - Variação necessária: {variacao_necessaria:+.1f}%
+                                    """)
+                                    
+                                    # Análise do EBITDA necessário
+                                    if variacao_necessaria > 0:
+                                        st.warning(f"**📈 EBITDA precisa crescer {variacao_necessaria:+.1f}%**")
+                                        st.write("Para justificar a cotação atual, a empresa precisa **aumentar** seu EBITDA significativamente.")
+                                    else:
+                                        st.success(f"**✅ EBITDA atual já justifica a cotação**")
+                                        st.write("O EBITDA atual já é suficiente para justificar a cotação de mercado com a SELIC atual.")
+                                
                                 # Mostrar também os dados de EBITDA para referência
                                 if ebitda_valor:
                                     st.info(f"""
-                                    **📈 Dados de Referência:**
+                                    **📊 Dados de Referência Atuais:**
                                     - **EBITDA:** {formatar_moeda_brasil_correta(ebitda_valor)}
                                     - **Lucro Econômico:** {formatar_moeda_brasil_correta(lucro_economico_valor)}
                                     - **Investimento Médio:** {formatar_moeda_brasil_correta(df_filtrado['Investimento Médio'].iloc[0])}
