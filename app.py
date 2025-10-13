@@ -336,7 +336,7 @@ def load_data():
     # ANÁLISE DE ALAVANCAGEM - ✅ CORRETO
     # =============================================================
     
-    # Verifica se a alavancagem é eficaz (ROE > ROA e ROE > ROI)
+    # Verifica se a alavancagem é eficaz (ROE > ROA and ROE > ROI)
     df["Alavancagem Eficaz"] = np.where(
         (df["ROE"].notna()) & (df["ROA"].notna()) & (df["ROI"].notna()),
         (df["ROE"] > df["ROA"]) & (df["ROE"] > df["ROI"]),
@@ -649,7 +649,7 @@ if modo_analise == "🏆 Ranking Comparativo":
                 st.warning("Não há dados de WACC disponíveis para ranking")
 
 # ==============================
-# TELA - VISÃO POR EMPRESA (ESCALAS CORRIGIDAS)
+# TELA - VISÃO POR EMPRESA (COM CAIXA OPERACIONAL)
 # ==============================
 elif modo_analise == "📈 Visão por Empresa":
     st.header(f"📊 Análise Detalhada - {ticker_selecionado}")
@@ -662,7 +662,7 @@ elif modo_analise == "📈 Visão por Empresa":
             st.subheader(f"Ano {ano_selecionado}")
             
             if not df_filtrado.empty:
-                # KPIs Principais - ADICIONANDO CAIXA OPERACIONAL COMO QUINTA COLUNA
+                # KPIs Principais - COM CAIXA OPERACIONAL
                 col1, col2, col3, col4, col5 = st.columns(5)
                 
                 with col1:
@@ -698,17 +698,13 @@ elif modo_analise == "📈 Visão por Empresa":
                                  help="WACC não pôde ser calculado devido a dados insuficientes")
                 
                 with col5:
-                    # ADIÇÃO: Caixa Líquido Atividades Operacionais
-                    if 'Caixa Líquido Atividades Operacionais' in df_filtrado.columns:
-                        valor_caixa = df_filtrado['Caixa Líquido Atividades Operacionais'].iloc[0]
-                        if pd.notna(valor_caixa):
-                            st.metric("Caixa Operacional", formatar_moeda_brasil_correta(valor_caixa))
-                        else:
-                            st.metric("Caixa Operacional*", "N/A", 
-                                     help="Dados de caixa operacional não disponíveis")
+                    # CAIXA OPERACIONAL
+                    valor_caixa = df_filtrado['Caixa Líquido Atividades Operacionais'].iloc[0]
+                    if pd.notna(valor_caixa):
+                        st.metric("Caixa Operacional", formatar_moeda_brasil_correta(valor_caixa))
                     else:
                         st.metric("Caixa Operacional*", "N/A", 
-                                 help="Coluna 'Caixa Líquido Atividades Operacionais' não encontrada no dataset")
+                                 help="Dados de caixa operacional não disponíveis")
                 
                 # VERIFICAÇÃO LUCRO ECONÔMICO 1 vs 2
                 st.subheader("🔍 Verificação: Lucro Econômico 1 vs 2")
@@ -746,7 +742,7 @@ elif modo_analise == "📈 Visão por Empresa":
                 
                 st.divider()
                 
-                # Abas para diferentes categorias de indicadores - ADICIONANDO ABA DE FLUXO DE CAIXA
+                # Abas para diferentes categorias de indicadores - COM ABA DE FLUXO DE CAIXA
                 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["📈 Rentabilidade", "💰 EBITDA", "🏛️ Estrutura Capital", "💸 Custo Capital", "📊 Lucro Econômico", "💵 Fluxo de Caixa", "📋 Dados Brutos"])
                 
                 with tab1:
@@ -813,9 +809,7 @@ elif modo_analise == "📈 Visão por Empresa":
                             st.info("ℹ️ Dados de Depreciação/Amortização não disponíveis. EBITDA calculado como aproximação do Resultado Operacional.")
                             st.write(f"**EBITDA ≈ Resultado Operacional = {formatar_moeda_brasil_correta(ebitda_valor)}**")
                         
-                        # =============================================================
-                        # 🏦 SEÇÃO CORRIGIDA: VALUATION POR LUCRO ECONÔMICO/SELIC
-                        # =============================================================
+                        # VALUATION POR LUCRO ECONÔMICO/SELIC
                         st.divider()
                         st.subheader("🏦 Valuation por Lucro Econômico/SELIC")
 
@@ -856,49 +850,6 @@ elif modo_analise == "📈 Visão por Empresa":
                                 
                                 # Buscar cotação atual
                                 dados_cotacao = buscar_cotacao_atual(ticker_selecionado)
-                                
-                                # CÁLCULO DA SELIC IMPLÍCITA (NOVO)
-                                selic_implicita = None
-                                market_cap_atual = None
-                                if dados_cotacao and numero_acoes and numero_acoes > 0:
-                                    market_cap_atual = dados_cotacao['cotacao'] * numero_acoes
-                                    if lucro_economico_valor > 0:
-                                        # Fórmula: SELIC implícita = (Lucro Econômico / Market Cap) × 100
-                                        selic_implicita = (lucro_economico_valor * 1000 / market_cap_atual) * 100
-                                
-                                # CÁLCULO DO EBITDA NECESSÁRIO (NOVO)
-                                ebitda_necessario = None
-                                if dados_cotacao and numero_acoes and numero_acoes > 0:
-                                    # Fórmula: EBITDA necessário = (Market Cap × (SELIC/100) + DA + WACC × Investimento) / (1 - relação EBITDA/Lucro Econ)
-                                    # Simplificação: Vamos usar uma aproximação baseada na margem operacional atual
-                                    investimento_medio = df_filtrado["Investimento Médio"].iloc[0] if pd.notna(df_filtrado["Investimento Médio"].iloc[0]) else 0
-                                    wacc = df_filtrado["wacc"].iloc[0] if pd.notna(df_filtrado["wacc"].iloc[0]) else 0
-                                    
-                                    # Encontrar depreciação e amortização
-                                    nome_coluna_da = None
-                                    for col in df_filtrado.columns:
-                                        if 'depreciação' in col.lower() and 'amortização' in col.lower():
-                                            nome_coluna_da = col
-                                            break
-                                    
-                                    depreciacao_amortizacao = 0
-                                    if nome_coluna_da and pd.notna(df_filtrado[nome_coluna_da].iloc[0]):
-                                        depreciacao_amortizacao = abs(df_filtrado[nome_coluna_da].iloc[0])
-                                    
-                                    # Calcular relação atual entre EBITDA e Lucro Econômico
-                                    ebitda_atual = df_filtrado["EBITDA"].iloc[0] if pd.notna(df_filtrado["EBITDA"].iloc[0]) else 0
-                                    if ebitda_atual > 0 and lucro_economico_valor > 0:
-                                        relacao_ebitda_lucro_eco = ebitda_atual / lucro_economico_valor
-                                    else:
-                                        # Se não temos dados, usar uma relação conservadora de 2:1
-                                        relacao_ebitda_lucro_eco = 2.0
-                                    
-                                    # Cálculo do EBITDA necessário
-                                    # Lucro Econômico necessário = Market Cap × (SELIC/100)
-                                    lucro_economico_necessario = market_cap_atual * (selic_percentual / 100) / 1000  # Dividir por 1000 para voltar para R$ mil
-                                    
-                                    # EBITDA necessário = Lucro Econômico necessário × relação EBITDA/Lucro Econ
-                                    ebitda_necessario = lucro_economico_necessario * relacao_ebitda_lucro_eco
                                 
                                 # Exibir resultados do valuation
                                 col_val1, col_val2, col_val3, col_val4 = st.columns(4)
@@ -965,163 +916,6 @@ elif modo_analise == "📈 Visão por Empresa":
                                     Cotação Esperada = {formatar_moeda_brasil_correta(valor_empresa_reais / 1000)} ÷ {formatar_numero_brasil_correto(numero_acoes, 0)}
                                     Cotação Esperada = R$ {cotacao_esperada:,.2f}
                                     ```
-                                    """)
-                                
-                                # NOVO: CÁLCULO DA SELIC IMPLÍCITA
-                                if selic_implicita is not None:
-                                    st.info(f"""
-                                    **🎯 SELIC Implícita (Para igualar à cotação atual):**
-                                    ```
-                                    Market Cap Atual = Cotação Atual × Número de Ações
-                                    Market Cap Atual = R$ {dados_cotacao['cotacao']:,.2f} × {formatar_numero_brasil_correto(numero_acoes, 0)}
-                                    Market Cap Atual = {formatar_moeda_brasil_correta(market_cap_atual / 1000)}
-                                    
-                                    SELIC Implícita = (Lucro Econômico ÷ Market Cap Atual) × 100
-                                    SELIC Implícita = ({formatar_moeda_brasil_correta(lucro_economico_valor)} ÷ {formatar_moeda_brasil_correta(market_cap_atual / 1000)}) × 100
-                                    SELIC Implícita = {selic_implicita:.1f}%
-                                    ```
-                                    
-                                    **💡 Interpretação:**
-                                    - Para que a **cotação esperada** seja igual à **cotação atual** (R$ {dados_cotacao['cotacao']:,.2f})
-                                    - A **SELIC** deveria ser de **{selic_implicita:.1f}%** a.a.
-                                    - Isso significa que o mercado está precificando a empresa como se a taxa de desconto fosse {selic_implicita:.1f}% a.a.
-                                    """)
-                                    
-                                    # Análise da SELIC implícita
-                                    if selic_implicita < selic_percentual:
-                                        st.success(f"**✅ SELIC Implícita ({selic_implicita:.1f}%) < SELIC Atual ({selic_percentual}%)**")
-                                        st.write("O mercado está exigindo uma taxa de retorno **menor** que a SELIC atual, indicando **confiança** na empresa.")
-                                    else:
-                                        st.warning(f"**⚠️ SELIC Implícita ({selic_implicita:.1f}%) > SELIC Atual ({selic_percentual}%)**")
-                                        st.write("O mercado está exigindo uma taxa de retorno **maior** que a SELIC atual, indicando **mais risco** percebido na empresa.")
-                                
-                                # NOVO: CÁLCULO DO EBITDA NECESSÁRIO
-                                if ebitda_necessario is not None and ebitda_necessario > 0:
-                                    ebitda_atual = df_filtrado["EBITDA"].iloc[0] if pd.notna(df_filtrado["EBITDA"].iloc[0]) else 0
-                                    variacao_necessaria = ((ebitda_necessario - ebitda_atual) / ebitda_atual) * 100
-                                    
-                                    st.info(f"""
-                                    **📈 EBITDA Necessário (Para igualar à cotação atual com SELIC {selic_percentual}%):**
-                                    ```
-                                    Market Cap Atual = {formatar_moeda_brasil_correta(market_cap_atual / 1000)}
-                                    Lucro Econômico Necessário = Market Cap × (SELIC/100)
-                                    Lucro Econômico Necessário = {formatar_moeda_brasil_correta(market_cap_atual / 1000)} × ({selic_percentual}%/100)
-                                    Lucro Econômico Necessário = {formatar_moeda_brasil_correta(lucro_economico_necessario)}
-                                    
-                                    EBITDA Necessário = Lucro Econômico Necessário × (EBITDA Atual ÷ Lucro Econ Atual)
-                                    EBITDA Necessário = {formatar_moeda_brasil_correta(lucro_economico_necessario)} × ({formatar_moeda_brasil_correta(ebitda_atual)} ÷ {formatar_moeda_brasil_correta(lucro_economico_valor)})
-                                    EBITDA Necessário = {formatar_moeda_brasil_correta(ebitda_necessario)}
-                                    ```
-                                    
-                                    **💡 Interpretação:**
-                                    - Para justificar a **cotação atual** (R$ {dados_cotacao['cotacao']:,.2f}) com **SELIC atual** ({selic_percentual}%)
-                                    - A empresa precisaria ter um **EBITDA** de **{formatar_moeda_brasil_correta(ebitda_necessario)}**
-                                    - EBITDA Atual: {formatar_moeda_brasil_correta(ebitda_atual)}
-                                    - Variação necessária: {variacao_necessaria:+.1f}%
-                                    """)
-                                    
-                                    # Análise do EBITDA necessário
-                                    if variacao_necessaria > 0:
-                                        st.warning(f"**📈 EBITDA precisa crescer {variacao_necessaria:+.1f}%**")
-                                        st.write("Para justificar a cotação atual, a empresa precisa **aumentar** seu EBITDA significativamente.")
-                                    else:
-                                        st.success(f"**✅ EBITDA atual já justifica a cotação**")
-                                        st.write("O EBITDA atual já é suficiente para justificar a cotação de mercado com a SELIC atual.")
-                                
-                                # Mostrar também os dados de EBITDA para referência
-                                if ebitda_valor:
-                                    st.info(f"""
-                                    **📊 Dados de Referência Atuais:**
-                                    - **EBITDA:** {formatar_moeda_brasil_correta(ebitda_valor)}
-                                    - **Lucro Econômico:** {formatar_moeda_brasil_correta(lucro_economico_valor)}
-                                    - **Investimento Médio:** {formatar_moeda_brasil_correta(df_filtrado['Investimento Médio'].iloc[0])}
-                                    - **ROI:** {formatar_percentual_brasil(df_filtrado['ROI'].iloc[0], 2)}
-                                    - **WACC:** {formatar_percentual_brasil(df_filtrado['wacc'].iloc[0], 2)}
-                                    """)
-                                
-                                # Se temos dados da cotação, fazer análise comparativa
-                                if dados_cotacao:
-                                    st.divider()
-                                    st.subheader("📈 Análise Comparativa com Cotação de Mercado")
-                                    
-                                    # Informações da empresa
-                                    col_info1, col_info2, col_info3, col_info4 = st.columns(4)
-                                    
-                                    with col_info1:
-                                        st.metric("Cotação Atual", f"R$ {dados_cotacao['cotacao']:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-                                    
-                                    with col_info2:
-                                        if cotacao_esperada:
-                                            diferenca_percentual = ((dados_cotacao['cotacao'] - cotacao_esperada) / cotacao_esperada) * 100
-                                            st.metric(
-                                                "Diferença vs Calculado", 
-                                                f"{diferenca_percentual:+.1f}%",
-                                                delta=f"{diferenca_percentual:+.1f}%"
-                                            )
-                                    
-                                    with col_info3:
-                                        st.metric("Setor", dados_cotacao['setor'])
-                                    
-                                    with col_info4:
-                                        if dados_cotacao['market_cap']:
-                                            market_cap_tri = dados_cotacao['market_cap'] / 1e12
-                                            st.metric("Market Cap", f"R$ {market_cap_tri:,.2f} tri".replace(",", "X").replace(".", ",").replace("X", "."))
-                                    
-                                    # Análise de valuation implícito
-                                    st.write("**💡 Interpretação:**")
-                                    
-                                    if cotacao_esperada:
-                                        st.write(f"""
-                                        - **Lucro Econômico Anual:** {formatar_moeda_brasil_correta(lucro_economico_valor)}
-                                        - **Taxa de Desconto (SELIC):** {selic_percentual}% a.a.
-                                        - **Valor Justo Calculado:** {formatar_moeda_brasil_correta(valor_empresa_reais / 1000)}
-                                        - **Número de Ações:** {formatar_numero_brasil_correto(numero_acoes, 0)}
-                                        - **Cotação Esperada:** R$ {cotacao_esperada:,.2f}
-                                        - **Cotação Atual ({dados_cotacao['data_atualizacao']}):** R$ {dados_cotacao['cotacao']:,.2f}
-                                        - **Diferença:** {diferenca_percentual:+.1f}%
-                                        """)
-                                    else:
-                                        st.write(f"""
-                                        - **Lucro Econômico Anual:** {formatar_moeda_brasil_correta(lucro_economico_valor)}
-                                        - **Taxa de Desconto (SELIC):** {selic_percentual}% a.a.
-                                        - **Valor Justo Calculado:** {formatar_moeda_brasil_correta(valor_empresa_reais / 1000)}
-                                        - **Cotação Atual ({dados_cotacao['data_atualizacao']}):** R$ {dados_cotacao['cotacao']:,.2f}
-                                        """)
-                                    
-                                    # Gráfico comparativo
-                                    if cotacao_esperada:
-                                        st.subheader("🎯 Comparação Visual")
-                                        
-                                        fig_comparativo = criar_grafico_comparativo(
-                                            cotacao_esperada, 
-                                            dados_cotacao['cotacao'], 
-                                            ticker_selecionado
-                                        )
-                                        st.plotly_chart(fig_comparativo, use_container_width=True)
-                                        
-                                        # Análise qualitativa
-                                        if diferenca_percentual > 20:
-                                            st.error("""
-                                            **🔴 Sobrevalorizado:** A cotação atual está significativamente acima do valuation calculado.
-                                            *Possíveis razões:* Expectativas de crescimento futuro, fatores setoriais favoráveis, ou especulação de mercado.
-                                            """)
-                                        elif diferenca_percentual < -20:
-                                            st.success("""
-                                            **🟢 Subvalorizado:** A cotação atual está significativamente abaixo do valuation calculado.
-                                            *Possíveis oportunidades:* Valorização potencial, retorno ao valuation justo.
-                                            """)
-                                        else:
-                                            st.info("""
-                                            **🟡 Valuation Próximo:** A cotação atual está alinhada com o valuation calculado.
-                                            *Interpretação:* Preço de mercado condizente com fundamentos.
-                                            """)
-                                
-                                else:
-                                    st.warning("""
-                                    **ℹ️ Informações Adicionais Necessárias:**
-                                    - Para análise completa, é necessário o número de ações em circulação
-                                    - Com o número de ações, podemos calcular o preço por ação teórico
-                                    - Considere também: crescimento futuro, perspectivas do setor, concorrência
                                     """)
                             
                             else:
@@ -1228,55 +1022,52 @@ elif modo_analise == "📈 Visão por Empresa":
                         st.warning("Não há dados de lucro econômico disponíveis")
                 
                 with tab6:
-                    # NOVA ABA: FLUXO DE CAIXA OPERACIONAL
+                    # ABA: FLUXO DE CAIXA OPERACIONAL
                     st.subheader("💵 Fluxo de Caixa Operacional")
                     
-                    if 'Caixa Líquido Atividades Operacionais' in df_filtrado.columns:
-                        valor_caixa = df_filtrado['Caixa Líquido Atividades Operacionais'].iloc[0]
+                    valor_caixa = df_filtrado['Caixa Líquido Atividades Operacionais'].iloc[0]
+                    
+                    if pd.notna(valor_caixa):
+                        # KPI Principal
+                        col1, col2, col3 = st.columns(3)
                         
-                        if pd.notna(valor_caixa):
-                            # KPI Principal
-                            col1, col2, col3 = st.columns(3)
-                            
-                            with col1:
-                                st.metric("Caixa Operacional", formatar_moeda_brasil_correta(valor_caixa))
-                            
-                            with col2:
-                                # Comparação com Lucro Líquido
-                                lucro_liquido = df_filtrado["Lucro/Prejuízo Consolidado do Período"].iloc[0] if pd.notna(df_filtrado["Lucro/Prejuízo Consolidado do Período"].iloc[0]) else 0
-                                if lucro_liquido != 0:
-                                    relacao_caixa_lucro = (valor_caixa / lucro_liquido) * 100
-                                    st.metric("Caixa/Lucro", f"{relacao_caixa_lucro:.1f}%")
-                            
-                            with col3:
-                                # Comparação com EBITDA
-                                ebitda = df_filtrado["EBITDA"].iloc[0] if "EBITDA" in df_filtrado.columns and pd.notna(df_filtrado["EBITDA"].iloc[0]) else 0
-                                if ebitda != 0:
-                                    relacao_caixa_ebitda = (valor_caixa / ebitda) * 100
-                                    st.metric("Caixa/EBITDA", f"{relacao_caixa_ebitda:.1f}%")
-                            
-                            # Análise Qualitativa
-                            st.subheader("📊 Análise do Fluxo de Caixa")
-                            
-                            if valor_caixa > 0:
-                                st.success("**✅ Geração Positiva de Caixa**")
-                                st.write("A empresa está gerando caixa líquido positivo em suas atividades operacionais.")
-                            else:
-                                st.warning("**⚠️ Geração Negativa de Caixa**")
-                                st.write("A empresa está consumindo caixa em suas atividades operacionais.")
-                            
-                            # Comparação com indicadores de rentabilidade
+                        with col1:
+                            st.metric("Caixa Operacional", formatar_moeda_brasil_correta(valor_caixa))
+                        
+                        with col2:
+                            # Comparação com Lucro Líquido
+                            lucro_liquido = df_filtrado["Lucro/Prejuízo Consolidado do Período"].iloc[0] if pd.notna(df_filtrado["Lucro/Prejuízo Consolidado do Período"].iloc[0]) else 0
                             if lucro_liquido != 0:
-                                if abs(relacao_caixa_lucro - 100) > 50:
-                                    if relacao_caixa_lucro > 150:
-                                        st.info("**💡 Caixa > Lucro:** A empresa gera mais caixa que lucro contábil, indicando boa qualidade do lucro.")
-                                    elif relacao_caixa_lucro < 50:
-                                        st.warning("**💡 Caixa < Lucro:** A empresa gera menos caixa que lucro contábil, pode indicar diferenças temporárias ou baixa qualidade do lucro.")
-                            
+                                relacao_caixa_lucro = (valor_caixa / lucro_liquido) * 100
+                                st.metric("Caixa/Lucro", f"{relacao_caixa_lucro:.1f}%")
+                        
+                        with col3:
+                            # Comparação com EBITDA
+                            ebitda = df_filtrado["EBITDA"].iloc[0] if "EBITDA" in df_filtrado.columns and pd.notna(df_filtrado["EBITDA"].iloc[0]) else 0
+                            if ebitda != 0:
+                                relacao_caixa_ebitda = (valor_caixa / ebitda) * 100
+                                st.metric("Caixa/EBITDA", f"{relacao_caixa_ebitda:.1f}%")
+                        
+                        # Análise Qualitativa
+                        st.subheader("📊 Análise do Fluxo de Caixa")
+                        
+                        if valor_caixa > 0:
+                            st.success("**✅ Geração Positiva de Caixa**")
+                            st.write("A empresa está gerando caixa líquido positivo em suas atividades operacionais.")
                         else:
-                            st.warning("Dados de Caixa Líquido de Atividades Operacionais não disponíveis para este ano")
+                            st.warning("**⚠️ Geração Negativa de Caixa**")
+                            st.write("A empresa está consumindo caixa em suas atividades operacionais.")
+                        
+                        # Comparação com indicadores de rentabilidade
+                        if lucro_liquido != 0:
+                            if abs(relacao_caixa_lucro - 100) > 50:
+                                if relacao_caixa_lucro > 150:
+                                    st.info("**💡 Caixa > Lucro:** A empresa gera mais caixa que lucro contábil, indicando boa qualidade do lucro.")
+                                elif relacao_caixa_lucro < 50:
+                                    st.warning("**💡 Caixa < Lucro:** A empresa gera menos caixa que lucro contábil, pode indicar diferenças temporárias ou baixa qualidade do lucro.")
+                        
                     else:
-                        st.warning("Coluna 'Caixa Líquido Atividades Operacionais' não encontrada no dataset")
+                        st.warning("Dados de Caixa Líquido de Atividades Operacionais não disponíveis para este ano")
                 
                 with tab7:
                     st.subheader("Dados Financeiros Brutos")
@@ -1291,7 +1082,7 @@ elif modo_analise == "📈 Visão por Empresa":
                         "Patrimônio Líquido Consolidado",
                         "Empréstimos e Financiamentos - Circulante",
                         "Empréstimos e Financiamentos - Não Circulante",
-                        "Caixa Líquido Atividades Operacionais"  # ADICIONADO
+                        "Caixa Líquido Atividades Operacionais"  # INCLUÍDO
                     ]
                     
                     # Adicionar a coluna de depreciação/amortização se existir
@@ -1517,69 +1308,68 @@ elif modo_analise == "📈 Visão por Empresa":
                     )
                     st.plotly_chart(fig_ebitda, use_container_width=True)
                 
-                # QUARTA LINHA - FLUXO DE CAIXA OPERACIONAL (NOVA SEÇÃO)
+                # QUARTA LINHA - FLUXO DE CAIXA OPERACIONAL
                 st.subheader("💸 Evolução do Fluxo de Caixa Operacional")
-                if 'Caixa Líquido Atividades Operacionais' in df_empresa_todos_anos.columns:
-                    col7, col8 = st.columns(2)
+                col7, col8 = st.columns(2)
+                
+                with col7:
+                    # Caixa Líquido Atividades Operacionais
+                    fig_caixa = px.line(df_empresa_todos_anos, x='Ano', y='Caixa Líquido Atividades Operacionais',
+                                      title='Caixa Líquido de Atividades Operacionais')
+                    fig_caixa.update_layout(
+                        yaxis_title='Caixa Operacional',
+                        yaxis_tickformat=',.0f',
+                        height=400
+                    )
+                    st.plotly_chart(fig_caixa, use_container_width=True)
+                
+                with col8:
+                    # Comparação Caixa vs Lucro Líquido
+                    df_comparacao = df_empresa_todos_anos.copy()
+                    df_comparacao = df_comparacao[df_comparacao['Caixa Líquido Atividades Operacionais'].notna() & 
+                                                df_comparacao['Lucro/Prejuízo Consolidado do Período'].notna()]
                     
-                    with col7:
-                        # Caixa Líquido Atividades Operacionais
-                        fig_caixa = px.line(df_empresa_todos_anos, x='Ano', y='Caixa Líquido Atividades Operacionais',
-                                          title='Caixa Líquido de Atividades Operacionais')
-                        fig_caixa.update_layout(
-                            yaxis_title='Caixa Operacional',
-                            yaxis_tickformat=',.0f',
-                            height=400
-                        )
-                        st.plotly_chart(fig_caixa, use_container_width=True)
-                    
-                    with col8:
-                        # Comparação Caixa vs Lucro Líquido
-                        df_comparacao = df_empresa_todos_anos.copy()
-                        df_comparacao = df_comparacao[df_comparacao['Caixa Líquido Atividades Operacionais'].notna() & 
-                                                    df_comparacao['Lucro/Prejuízo Consolidado do Período'].notna()]
+                    if not df_comparacao.empty:
+                        fig_comparacao = go.Figure()
                         
-                        if not df_comparacao.empty:
-                            fig_comparacao = go.Figure()
-                            
-                            fig_comparacao.add_trace(go.Scatter(
-                                x=df_comparacao['Ano'],
-                                y=df_comparacao['Caixa Líquido Atividades Operacionais'],
-                                mode='lines+markers',
-                                name='Caixa Operacional',
-                                line=dict(color='#27ae60', width=3),
-                                marker=dict(size=8)
-                            ))
-                            
-                            fig_comparacao.add_trace(go.Scatter(
-                                x=df_comparacao['Ano'],
-                                y=df_comparacao['Lucro/Prejuízo Consolidado do Período'],
-                                mode='lines+markers',
-                                name='Lucro Líquido',
-                                line=dict(color='#e74c3c', width=3),
-                                marker=dict(size=8)
-                            ))
-                            
-                            fig_comparacao.update_layout(
-                                title='Comparação: Caixa Operacional vs Lucro Líquido',
-                                xaxis_title='Ano',
-                                yaxis_title='Valor',
-                                yaxis_tickformat=',.0f',
-                                height=400,
-                                showlegend=True
-                            )
-                            st.plotly_chart(fig_comparacao, use_container_width=True)
+                        fig_comparacao.add_trace(go.Scatter(
+                            x=df_comparacao['Ano'],
+                            y=df_comparacao['Caixa Líquido Atividades Operacionais'],
+                            mode='lines+markers',
+                            name='Caixa Operacional',
+                            line=dict(color='#27ae60', width=3),
+                            marker=dict(size=8)
+                        ))
+                        
+                        fig_comparacao.add_trace(go.Scatter(
+                            x=df_comparacao['Ano'],
+                            y=df_comparacao['Lucro/Prejuízo Consolidado do Período'],
+                            mode='lines+markers',
+                            name='Lucro Líquido',
+                            line=dict(color='#e74c3c', width=3),
+                            marker=dict(size=8)
+                        ))
+                        
+                        fig_comparacao.update_layout(
+                            title='Comparação: Caixa Operacional vs Lucro Líquido',
+                            xaxis_title='Ano',
+                            yaxis_title='Valor',
+                            yaxis_tickformat=',.0f',
+                            height=400,
+                            showlegend=True
+                        )
+                        st.plotly_chart(fig_comparacao, use_container_width=True)
                 
                 # Tabela resumo da evolução - INCLUINDO CAIXA OPERACIONAL
                 st.subheader("📋 Resumo da Evolução - Principais Indicadores")
                 
-                # Selecionar indicadores chave para a tabela - ADICIONANDO CAIXA OPERACIONAL
+                # Selecionar indicadores chave para a tabela - INCLUINDO CAIXA OPERACIONAL
                 indicadores_resumo = ['ROE', 'ROA', 'ROI', 'Margem Líquida', 'wacc', 'Percentual Capital Próprio', 
                                     'Lucro Econômico 1', 'Resultado Antes do Resultado Financeiro e dos Tributos', 'EBITDA',
-                                    'Caixa Líquido Atividades Operacionais']  # ADICIONADO
+                                    'Caixa Líquido Atividades Operacionais']
                 df_resumo = df_empresa_todos_anos[['Ano'] + [col for col in indicadores_resumo if col in df_empresa_todos_anos.columns]]
                 
-                # Formatar para porcentagem e valores monetários - ATUALIZADO PARA INCLUIR CAIXA
+                # Formatar para porcentagem e valores monetários - INCLUINDO CAIXA
                 def formatar_valor(valor, coluna):
                     if coluna in ['ROE', 'ROA', 'ROI', 'Margem Líquida', 'wacc', 'Percentual Capital Próprio']:
                         return formatar_percentual_brasil(valor, 2) if pd.notna(valor) else "N/A"
@@ -1600,7 +1390,7 @@ elif modo_analise == "📈 Visão por Empresa":
                 st.info("ℹ️ São necessários dados de múltiplos anos para análise de evolução temporal")
 
 # ==============================
-# TELA - ANÁLISE SETORIAL (ESCALAS CORRIGIDAS)
+# TELA - ANÁLISE SETORIAL
 # ==============================
 elif modo_analise == "🏭 Análise Setorial":
     st.header(f"🏭 Análise Setorial - {setor_selecionado}")
