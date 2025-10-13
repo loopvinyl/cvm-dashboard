@@ -21,11 +21,10 @@ def configurar_locale_brasil():
     except:
         try:
             locale.setlocale(locale.LC_ALL, 'Portuguese_Brazil.1252')
-        # Não exibe mais o warning, apenas ignora
+        except:
+            # Não exibe mais o warning, apenas ignora
             pass
-
-configurar_locale_brasil()
-
+            
 # Funções de formatação brasileira
 def formatar_numero_brasil(valor, casas_decimais=0):
     """
