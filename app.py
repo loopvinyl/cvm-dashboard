@@ -111,7 +111,7 @@ def formatar_dataframe_percentual(df, colunas):
 # CONFIGURAÇÕES INICIAIS
 # ==============================
 st.set_page_config(page_title="Dashboard CVM - Indicadores", layout="wide")
-st.title("📊 Dashboard CVM - Análise de Indicadores Financeiros")
+st.title("Dashboard CVM - Análise de Indicadores Financeiros")
 
 # ==============================
 # LEITURA DE DADOS
