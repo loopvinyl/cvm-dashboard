@@ -662,8 +662,8 @@ elif modo_analise == "📈 Visão por Empresa":
             st.subheader(f"Ano {ano_selecionado}")
             
             if not df_filtrado.empty:
-                # KPIs Principais
-                col1, col2, col3, col4 = st.columns(4)
+                # KPIs Principais - ADICIONANDO CAIXA OPERACIONAL
+                col1, col2, col3, col4, col5 = st.columns(5)
                 
                 with col1:
                     valor_roe = df_filtrado["ROE"].iloc[0]
@@ -696,6 +696,19 @@ elif modo_analise == "📈 Visão por Empresa":
                     else:
                         st.metric("WACC*", "-", 
                                  help="WACC não pôde ser calculado devido a dados insuficientes")
+                
+                with col5:
+                    # ADIÇÃO: Caixa Líquido Atividades Operacionais
+                    if 'Caixa Líquido Atividades Operacionais' in df_filtrado.columns:
+                        valor_caixa = df_filtrado['Caixa Líquido Atividades Operacionais'].iloc[0]
+                        if pd.notna(valor_caixa):
+                            st.metric("Caixa Operacional", formatar_moeda_brasil_correta(valor_caixa))
+                        else:
+                            st.metric("Caixa Operacional*", "N/A", 
+                                     help="Dados de caixa operacional não disponíveis")
+                    else:
+                        st.metric("Caixa Operacional*", "N/A", 
+                                 help="Coluna 'Caixa Líquido Atividades Operacionais' não encontrada no dataset")
                 
                 # VERIFICAÇÃO LUCRO ECONÔMICO 1 vs 2
                 st.subheader("🔍 Verificação: Lucro Econômico 1 vs 2")
@@ -733,8 +746,8 @@ elif modo_analise == "📈 Visão por Empresa":
                 
                 st.divider()
                 
-                # Abas para diferentes categorias de indicadores
-                tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📈 Rentabilidade", "💰 EBITDA", "🏛️ Estrutura Capital", "💸 Custo Capital", "📊 Lucro Econômico", "📋 Dados Brutos"])
+                # Abas para diferentes categorias de indicadores - ADICIONANDO ABA DE FLUXO DE CAIXA
+                tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["📈 Rentabilidade", "💰 EBITDA", "🏛️ Estrutura Capital", "💸 Custo Capital", "📊 Lucro Econômico", "💵 Fluxo de Caixa", "📋 Dados Brutos"])
                 
                 with tab1:
                     st.subheader("Indicadores de Rentabilidade")
@@ -1215,6 +1228,57 @@ elif modo_analise == "📈 Visão por Empresa":
                         st.warning("Não há dados de lucro econômico disponíveis")
                 
                 with tab6:
+                    # NOVA ABA: FLUXO DE CAIXA
+                    st.subheader("💵 Fluxo de Caixa Operacional")
+                    
+                    if 'Caixa Líquido Atividades Operacionais' in df_filtrado.columns:
+                        valor_caixa = df_filtrado['Caixa Líquido Atividades Operacionais'].iloc[0]
+                        
+                        if pd.notna(valor_caixa):
+                            # KPI Principal
+                            col1, col2, col3 = st.columns(3)
+                            
+                            with col1:
+                                st.metric("Caixa Operacional", formatar_moeda_brasil_correta(valor_caixa))
+                            
+                            with col2:
+                                # Comparação com Lucro Líquido
+                                lucro_liquido = df_filtrado["Lucro/Prejuízo Consolidado do Período"].iloc[0] if pd.notna(df_filtrado["Lucro/Prejuízo Consolidado do Período"].iloc[0]) else 0
+                                if lucro_liquido != 0:
+                                    relacao_caixa_lucro = (valor_caixa / lucro_liquido) * 100
+                                    st.metric("Caixa/Lucro", f"{relacao_caixa_lucro:.1f}%")
+                            
+                            with col3:
+                                # Comparação com EBITDA
+                                ebitda = df_filtrado["EBITDA"].iloc[0] if "EBITDA" in df_filtrado.columns and pd.notna(df_filtrado["EBITDA"].iloc[0]) else 0
+                                if ebitda != 0:
+                                    relacao_caixa_ebitda = (valor_caixa / ebitda) * 100
+                                    st.metric("Caixa/EBITDA", f"{relacao_caixa_ebitda:.1f}%")
+                            
+                            # Análise Qualitativa
+                            st.subheader("📊 Análise do Fluxo de Caixa")
+                            
+                            if valor_caixa > 0:
+                                st.success("**✅ Geração Positiva de Caixa**")
+                                st.write("A empresa está gerando caixa líquido positivo em suas atividades operacionais.")
+                            else:
+                                st.warning("**⚠️ Geração Negativa de Caixa**")
+                                st.write("A empresa está consumindo caixa em suas atividades operacionais.")
+                            
+                            # Comparação com indicadores de rentabilidade
+                            if lucro_liquido != 0:
+                                if abs(relacao_caixa_lucro - 100) > 50:
+                                    if relacao_caixa_lucro > 150:
+                                        st.info("**💡 Caixa > Lucro:** A empresa gera mais caixa que lucro contábil, indicando boa qualidade do lucro.")
+                                    elif relacao_caixa_lucro < 50:
+                                        st.warning("**💡 Caixa < Lucro:** A empresa gera menos caixa que lucro contábil, pode indicar diferenças temporárias ou baixa qualidade do lucro.")
+                            
+                        else:
+                            st.warning("Dados de Caixa Líquido de Atividades Operacionais não disponíveis para este ano")
+                    else:
+                        st.warning("Coluna 'Caixa Líquido Atividades Operacionais' não encontrada no dataset")
+                
+                with tab7:
                     st.subheader("Dados Financeiros Brutos")
                     dados_brutos_cols = [
                         "Receita de Venda de Bens e/ou Serviços",
@@ -1226,7 +1290,8 @@ elif modo_analise == "📈 Visão por Empresa":
                         "Ativo Total",
                         "Patrimônio Líquido Consolidado",
                         "Empréstimos e Financiamentos - Circulante",
-                        "Empréstimos e Financiamentos - Não Circulante"
+                        "Empréstimos e Financiamentos - Não Circulante",
+                        "Caixa Líquido Atividades Operacionais"  # ADICIONADO
                     ]
                     
                     # Adicionar a coluna de depreciação/amortização se existir
@@ -1452,19 +1517,73 @@ elif modo_analise == "📈 Visão por Empresa":
                     )
                     st.plotly_chart(fig_ebitda, use_container_width=True)
                 
-                # Tabela resumo da evolução
+                # QUARTA LINHA - FLUXO DE CAIXA OPERACIONAL (NOVA SEÇÃO)
+                st.subheader("💸 Evolução do Fluxo de Caixa Operacional")
+                if 'Caixa Líquido Atividades Operacionais' in df_empresa_todos_anos.columns:
+                    col7, col8 = st.columns(2)
+                    
+                    with col7:
+                        # Caixa Líquido Atividades Operacionais
+                        fig_caixa = px.line(df_empresa_todos_anos, x='Ano', y='Caixa Líquido Atividades Operacionais',
+                                          title='Caixa Líquido de Atividades Operacionais')
+                        fig_caixa.update_layout(
+                            yaxis_title='Caixa Operacional',
+                            yaxis_tickformat=',.0f',
+                            height=400
+                        )
+                        st.plotly_chart(fig_caixa, use_container_width=True)
+                    
+                    with col8:
+                        # Comparação Caixa vs Lucro Líquido
+                        df_comparacao = df_empresa_todos_anos.copy()
+                        df_comparacao = df_comparacao[df_comparacao['Caixa Líquido Atividades Operacionais'].notna() & 
+                                                    df_comparacao['Lucro/Prejuízo Consolidado do Período'].notna()]
+                        
+                        if not df_comparacao.empty:
+                            fig_comparacao = go.Figure()
+                            
+                            fig_comparacao.add_trace(go.Scatter(
+                                x=df_comparacao['Ano'],
+                                y=df_comparacao['Caixa Líquido Atividades Operacionais'],
+                                mode='lines+markers',
+                                name='Caixa Operacional',
+                                line=dict(color='#27ae60', width=3),
+                                marker=dict(size=8)
+                            ))
+                            
+                            fig_comparacao.add_trace(go.Scatter(
+                                x=df_comparacao['Ano'],
+                                y=df_comparacao['Lucro/Prejuízo Consolidado do Período'],
+                                mode='lines+markers',
+                                name='Lucro Líquido',
+                                line=dict(color='#e74c3c', width=3),
+                                marker=dict(size=8)
+                            ))
+                            
+                            fig_comparacao.update_layout(
+                                title='Comparação: Caixa Operacional vs Lucro Líquido',
+                                xaxis_title='Ano',
+                                yaxis_title='Valor',
+                                yaxis_tickformat=',.0f',
+                                height=400,
+                                showlegend=True
+                            )
+                            st.plotly_chart(fig_comparacao, use_container_width=True)
+                
+                # Tabela resumo da evolução - INCLUINDO CAIXA OPERACIONAL
                 st.subheader("📋 Resumo da Evolução - Principais Indicadores")
                 
-                # Selecionar indicadores chave para a tabela
+                # Selecionar indicadores chave para a tabela - ADICIONANDO CAIXA OPERACIONAL
                 indicadores_resumo = ['ROE', 'ROA', 'ROI', 'Margem Líquida', 'wacc', 'Percentual Capital Próprio', 
-                                    'Lucro Econômico 1', 'Resultado Antes do Resultado Financeiro e dos Tributos', 'EBITDA']
+                                    'Lucro Econômico 1', 'Resultado Antes do Resultado Financeiro e dos Tributos', 'EBITDA',
+                                    'Caixa Líquido Atividades Operacionais']  # ADICIONADO
                 df_resumo = df_empresa_todos_anos[['Ano'] + [col for col in indicadores_resumo if col in df_empresa_todos_anos.columns]]
                 
-                # Formatar para porcentagem e valores monetários
+                # Formatar para porcentagem e valores monetários - ATUALIZADO PARA INCLUIR CAIXA
                 def formatar_valor(valor, coluna):
                     if coluna in ['ROE', 'ROA', 'ROI', 'Margem Líquida', 'wacc', 'Percentual Capital Próprio']:
                         return formatar_percentual_brasil(valor, 2) if pd.notna(valor) else "N/A"
-                    elif coluna in ['Lucro Econômico 1', 'Resultado Antes do Resultado Financeiro e dos Tributos', 'EBITDA']:
+                    elif coluna in ['Lucro Econômico 1', 'Resultado Antes do Resultado Financeiro e dos Tributos', 'EBITDA', 'Caixa Líquido Atividades Operacionais']:
                         return formatar_moeda_brasil_correta(valor) if pd.notna(valor) else "N/A"
                     else:
                         return valor
@@ -1721,7 +1840,8 @@ formulas = {
     "EBITDA": "Resultado Operacional + Depreciação + Amortização",
     "Valuation Lucro Econômico/SELIC": "Lucro Econômico ÷ (SELIC/100)",
     "Percentual Capital Terceiros": "(Passivo Circulante + Não Circulante) ÷ Total Passivo",
-    "Percentual Capital Próprio": "Patrimônio Líquido ÷ Total Passivo"
+    "Percentual Capital Próprio": "Patrimônio Líquido ÷ Total Passivo",
+    "Caixa Líquido Atividades Operacionais": "Fluxo de caixa gerado/consumido pelas atividades operacionais"
 }
 
 # Exibir fórmulas em colunas
@@ -1778,6 +1898,11 @@ with st.sidebar.expander("💡 Metodologia livro Vellani (2024)"):
     - **COTAÇÃO ESPERADA:** Valor da Empresa (R$) ÷ Número de Ações
     - **COTAÇÃO:** Busca em tempo real via Yahoo Finance
     - **ANÁLISE:** Comparação entre valuation calculado e cotação de mercado
+
+    **Novas Funcionalidades:**
+    - **FLUXO DE CAIXA OPERACIONAL:** Adicionada análise do Caixa Líquido de Atividades Operacionais
+    - **COMPARAÇÃO:** Caixa Operacional vs Lucro Líquido para análise de qualidade do lucro
+    - **EVOLUÇÃO TEMPORAL:** Gráficos de fluxo de caixa na análise histórica
 
     **Dataset: dff_2010_2024**
     - Período: 2010-2024 (15 anos)
