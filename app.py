@@ -21,8 +21,8 @@ def configurar_locale_brasil():
     except:
         try:
             locale.setlocale(locale.LC_ALL, 'Portuguese_Brazil.1252')
-        except:
-            st.warning("Não foi possível configurar locale brasileiro. Usando formatação padrão.")
+        # Não exibe mais o warning, apenas ignora
+            pass
 
 configurar_locale_brasil()
 
