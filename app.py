@@ -472,8 +472,8 @@ else:  # Ranking Comparativo
 # ==============================
 # TELA PRINCIPAL - RANKING COMPARATIVO (ESCALAS CORRIGIDAS)
 # ==============================
-if modo_analise == "🏆 Ranking Comparativo":
-    st.header(f"🏆 Ano mais recente publicado: {ano_selecionado}")
+if modo_analise == "Dados Gerais":
+    st.header(f"Ano mais recente publicado: {ano_selecionado}")
     
     # KPIs Gerais no Topo - ESCALAS CORRIGIDAS
     col1, col2, col3, col4 = st.columns(4)
