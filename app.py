@@ -311,7 +311,7 @@ def criar_grafico_comparativo(preco_calculado, cotacao_atual, ticker):
         value = cotacao_atual,
         delta = {'reference': preco_calculado, 'relative': True},
         domain = {'x': [0.1, 1], 'y': [0.1, 0.9]},
-        title = {'text': f"💰 {ticker} - Valuation vs Cotação"},
+        title = {'text': f"💰 {ticker} - Cotação"},
         gauge = {
             'shape': "bullet",
             'axis': {'range': [min_val, max_val]},
