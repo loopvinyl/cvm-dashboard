@@ -1930,27 +1930,19 @@ elif modo_analise == "📈 Visão por Empresa":
                     )
                 
                 # Gráfico de dividendos ao longo do tempo
-                st.subheader("📈 Evolução dos Dividendos")
-                
-                fig_dividendos = px.line(
-                    df_dividendos, 
-                    x='Data', 
-                    y='Dividendo',
-                    title=f'Dividendos por Ação - {ticker_selecionado}',
-                    markers=True
-                )
-                
-                # CORREÇÃO MELHORADA: Formatação brasileira no eixo Y com vírgula
-                fig_dividendos.update_layout(
-                    yaxis_title='Dividendo por Ação (R$)',
-                    xaxis_title='Data',
-                    height=400,
-                    yaxis=dict(
-                        tickformat=".4f",  # 4 casas decimais
-                        separatethousands=True,
-                        tickmode='auto'
+                                    fig_dividendos = px.bar(
+                        df_dividendos_ano, 
+                        x="Ano", 
+                        y="Dividendo", 
+                        title="📈 Evolução dos Dividendos"
                     )
-                )
+                    fig_dividendos.update_layout(
+                        yaxis_title="Dividendos (R$)",
+                        yaxis_tickprefix="R$ ",
+                        yaxis_tickformat=", .2f"
+                    )
+                    st.plotly_chart(fig_dividendos, use_container_width=True)
+
                 
                 # CORREÇÃO ADICIONAL: Formatar os ticks do eixo Y manualmente para usar vírgula
                 # Isso é necessário porque o plotly não suporta diretamente a substituição do ponto por vírgula
