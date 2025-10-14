@@ -1956,7 +1956,7 @@ elif modo_analise == "📈 Visão por Empresa":
                 # Isso é necessário porque o plotly não suporta diretamente a substituição do ponto por vírgula
                 # Vamos atualizar os textos dos ticks para substituir ponto por vírgula
                 fig_dividendos.update_yaxes(
-                    tickformat=".4f",
+                    tickformat=".0f",
                     ticktext=[f"{y:.4f}".replace('.', ',') for y in fig_dividendos.data[0].y]
                 )
                 
