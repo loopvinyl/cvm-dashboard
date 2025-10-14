@@ -132,6 +132,9 @@ def buscar_dividendos_historicos(ticker):
         # CORREÇÃO: Remover timezone para compatibilidade
         df_dividendos['Data'] = df_dividendos['Data'].dt.tz_localize(None)
         
+        # CORREÇÃO: Filtrar apenas a partir de 2010
+        df_dividendos = df_dividendos[df_dividendos['Data'] >= datetime(2010, 1, 1)]
+        
         df_dividendos['Ano'] = df_dividendos['Data'].dt.year
         df_dividendos['Mes'] = df_dividendos['Data'].dt.month
         
@@ -286,7 +289,7 @@ def calcular_dividend_yield(ticker):
 # CONFIGURAÇÕES INICIAIS
 # ==============================
 st.set_page_config(page_title="Dashboard CVM - Indicadores", layout="wide")
-st.title("Dashboard CVM: Análise das Demonstrações Financeiras")
+st.title("Dashboard CVM : Análise das Demonstrações Financeiras")
 
 # ==============================
 # LEITURA DE DADOS
@@ -832,23 +835,31 @@ if modo_analise == "🏆 Dados Gerais":
         # Buscar dados de dividend yield para todas as empresas
         tickers_unicos = df_filtrado['Ticker'].unique()
         
-        # Limitar a 30 empresas para não sobrecarregar a API
-        tickers_analisar = tickers_unicos[:30]
+        # Aumentar limite para 50 empresas
+        tickers_analisar = tickers_unicos[:50]
         
         dados_dy = []
         
-        with st.spinner("Calculando dividend yields..."):
-            for ticker in tickers_analisar:
-                dy = calcular_dividend_yield(ticker)
-                if dy is not None:
-                    dados_cotacao = buscar_cotacao_atual(ticker)
-                    if dados_cotacao:
-                        dados_dy.append({
-                            'Ticker': ticker,
-                            'Dividend Yield': dy,
-                            'Cotação': dados_cotacao['cotacao'],
-                            'Setor': dados_cotacao['setor']
-                        })
+        with st.spinner("Calculando dividend yields... Isso pode levar alguns minutos"):
+            progress_bar = st.progress(0)
+            for i, ticker in enumerate(tickers_analisar):
+                try:
+                    dy = calcular_dividend_yield(ticker)
+                    if dy is not None and dy > 0:  # Só incluir se tiver dividend yield positivo
+                        dados_cotacao = buscar_cotacao_atual(ticker)
+                        if dados_cotacao:
+                            dados_dy.append({
+                                'Ticker': ticker,
+                                'Dividend Yield': dy,
+                                'Cotação': dados_cotacao['cotacao'],
+                                'Setor': dados_cotacao['setor']
+                            })
+                except Exception as e:
+                    # Silenciosamente ignora erros e continua
+                    pass
+                
+                # Atualizar barra de progresso
+                progress_bar.progress((i + 1) / len(tickers_analisar))
         
         if dados_dy:
             # Criar DataFrame e ordenar por Dividend Yield
@@ -1929,16 +1940,26 @@ elif modo_analise == "📈 Visão por Empresa":
                     markers=True
                 )
                 
-                # CORREÇÃO: Formatação brasileira no eixo Y (2 casas decimais, vírgula)
+                # CORREÇÃO MELHORADA: Formatação brasileira no eixo Y com vírgula
                 fig_dividendos.update_layout(
                     yaxis_title='Dividendo por Ação (R$)',
                     xaxis_title='Data',
                     height=400,
                     yaxis=dict(
-                        tickformat=",.4f",  # 4 casas decimais para dividendos
+                        tickformat=".4f",  # 4 casas decimais
+                        separatethousands=True,
                         tickmode='auto'
                     )
                 )
+                
+                # CORREÇÃO ADICIONAL: Formatar os ticks do eixo Y manualmente para usar vírgula
+                # Isso é necessário porque o plotly não suporta diretamente a substituição do ponto por vírgula
+                # Vamos atualizar os textos dos ticks para substituir ponto por vírgula
+                fig_dividendos.update_yaxes(
+                    tickformat=".4f",
+                    ticktext=[f"{y:.4f}".replace('.', ',') for y in fig_dividendos.data[0].y]
+                )
+                
                 st.plotly_chart(fig_dividendos, use_container_width=True)
                 
                 # Dividendos por ano
@@ -2041,12 +2062,13 @@ elif modo_analise == "📈 Visão por Empresa":
             col1, col2 = st.columns(2)
             
             with col1:
-                # CORREÇÃO: Formato brasileiro para data
+                # CORREÇÃO: Usar formato brasileiro explicitamente
                 data_inicio = st.date_input(
                     "Data do investimento inicial",
                     min_value=datetime(2010, 1, 1),
                     max_value=datetime.now(),
                     value=datetime(2015, 1, 1),
+                    format="DD/MM/YYYY",  # FORÇAR FORMATO BRASILEIRO
                     help="Data em que o investimento de R$ 1.000,00 seria feito (formato DD/MM/AAAA)"
                 )
             
