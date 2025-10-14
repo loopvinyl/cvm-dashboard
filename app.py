@@ -1,5 +1,5 @@
 # ==============================================================
-# 📊 DASHBOARD CVM - Indicadores Financeiros (VERSÃO COMPLETA COM ANÁLISES AVANÇADAS)
+# 📊 DASHBOARD CVM - Indicadores Financeiros (VERSÃO COMPLETA COM DIVIDENDOS)
 # ==============================================================
 import streamlit as st
 import pandas as pd
@@ -26,6 +26,102 @@ def configurar_locale_brasil():
             pass
 
 configurar_locale_brasil()
+
+# ==============================
+# FUNÇÕES DE DIVIDENDOS (NOVAS)
+# ==============================
+def buscar_dividendos_historicos(ticker):
+    """
+    Busca dividendos históricos usando yfinance
+    """
+    try:
+        # Adiciona .SA para ações brasileiras
+        ticker_yf = f"{ticker}.SA"
+        acao = yf.Ticker(ticker_yf)
+        
+        # Busca dividendos históricos
+        dividendos = acao.dividends
+        
+        if dividendos.empty:
+            return None
+            
+        # Converter para DataFrame e formatar
+        df_dividendos = dividendos.reset_index()
+        df_dividendos.columns = ['Data', 'Dividendo']
+        df_dividendos['Ano'] = df_dividendos['Data'].dt.year
+        df_dividendos['Mes'] = df_dividendos['Data'].dt.month
+        
+        return df_dividendos
+        
+    except Exception as e:
+        st.warning(f"⚠️ Não foi possível buscar dividendos para {ticker}: {str(e)}")
+        return None
+
+def calcular_estatisticas_dividendos(df_dividendos):
+    """
+    Calcula estatísticas dos dividendos
+    """
+    if df_dividendos is None or df_dividendos.empty:
+        return None
+    
+    stats = {
+        'total_dividendos': df_dividendos['Dividendo'].sum(),
+        'media_anual': df_dividendos.groupby('Ano')['Dividendo'].sum().mean(),
+        'maior_dividendo': df_dividendos['Dividendo'].max(),
+        'menor_dividendo': df_dividendos['Dividendo'].min(),
+        'frequencia_media': len(df_dividendos) / df_dividendos['Ano'].nunique(),
+        'ultimo_dividendo': df_dividendos.iloc[-1]['Dividendo'] if len(df_dividendos) > 0 else 0,
+        'data_ultimo': df_dividendos.iloc[-1]['Data'] if len(df_dividendos) > 0 else None
+    }
+    
+    return stats
+
+def prever_dividendos(df_dividendos):
+    """
+    Faz uma projeção simples de dividendos futuros baseada no histórico
+    """
+    if df_dividendos is None:
+        return None
+    
+    # Agrupar por ano e calcular média de crescimento
+    dividendos_ano = df_dividendos.groupby('Ano')['Dividendo'].sum()
+    
+    if len(dividendos_ano) < 2:
+        return None
+    
+    # Calcular crescimento médio
+    crescimento = dividendos_ano.pct_change().mean()
+    
+    # Projeção para próximo ano
+    ultimo_ano = dividendos_ano.iloc[-1]
+    projecao = ultimo_ano * (1 + crescimento) if not pd.isna(crescimento) else ultimo_ano
+    
+    return {
+        'crescimento_medio': crescimento,
+        'ultimo_ano': ultimo_ano,
+        'projecao_proximo_ano': projecao,
+        'confiabilidade': 'Alta' if len(dividendos_ano) >= 3 else 'Média'
+    }
+
+def comparar_dividendos_empresas(tickers):
+    """
+    Compara dividendos de múltiplas empresas
+    """
+    dados_comparacao = []
+    
+    for ticker in tickers:
+        df_div = buscar_dividendos_historicos(ticker)
+        if df_div is not None and not df_div.empty:
+            stats = calcular_estatisticas_dividendos(df_div)
+            dados_comparacao.append({
+                'Ticker': ticker,
+                'Último Dividendo': stats['ultimo_dividendo'],
+                'Média Anual': stats['media_anual'],
+                'Total Histórico': stats['total_dividendos'],
+                'Frequência/Ano': stats['frequencia_media']
+            })
+    
+    return pd.DataFrame(dados_comparacao)
 
 # ==============================
 # FUNÇÕES DE FORMATAÇÃO COM ESCALAS CORRIGIDAS
@@ -111,7 +207,7 @@ def formatar_dataframe_percentual(df, colunas):
 # CONFIGURAÇÕES INICIAIS
 # ==============================
 st.set_page_config(page_title="Dashboard CVM - Indicadores", layout="wide")
-st.title("Dashboard CVM - Análise de Indicadores Financeiros")
+st.title("Dashboard CVM: Análise das Demonstrações Financeiras")
 
 # ==============================
 # LEITURA DE DADOS
@@ -336,7 +432,7 @@ def load_data():
     # ANÁLISE DE ALAVANCAGEM - ✅ CORRETO
     # =============================================================
     
-    # Verifica se a alavancagem é eficaz (ROE > ROA and ROE > ROI)
+    # Verifica se a alavancagem é eficaz (ROE > ROA e ROE > ROI)
     df["Alavancagem Eficaz"] = np.where(
         (df["ROE"].notna()) & (df["ROA"].notna()) & (df["ROI"].notna()),
         (df["ROE"] > df["ROA"]) & (df["ROE"] > df["ROI"]),
@@ -440,7 +536,7 @@ st.sidebar.header("🔧 Filtros Principais")
 # Seleção de modo de análise
 modo_analise = st.sidebar.radio(
     "Modo de Análise:",
-    ["🏆 Ranking Comparativo", "📈 Visão por Empresa", "🏭 Análise Setorial"]
+    ["🏆 Dados Gerais", "📈 Visão por Empresa", "🏭 Análise Setorial"]
 )
 
 # Filtro de ano
@@ -466,14 +562,14 @@ elif modo_analise == "🏭 Análise Setorial":
     # Dados para série temporal - todos os anos do setor selecionado
     df_setor_todos_anos = df[df["SETOR_ATIV"] == setor_selecionado].sort_values(["Ano", "Ticker"])
     
-else:  # Ranking Comparativo
+else:  # Dados Gerais
     df_filtrado = df[df["Ano"] == ano_selecionado]
 
 # ==============================
 # TELA PRINCIPAL - RANKING COMPARATIVO (ESCALAS CORRIGIDAS)
 # ==============================
-if modo_analise == "Dados Gerais":
-    st.header(f"Ano mais recente publicado: {ano_selecionado}")
+if modo_analise == "🏆 Dados Gerais":
+    st.header(f"🏆 Ano mais recente publicado: {ano_selecionado}")
     
     # KPIs Gerais no Topo - ESCALAS CORRIGIDAS
     col1, col2, col3, col4 = st.columns(4)
@@ -499,7 +595,7 @@ if modo_analise == "Dados Gerais":
     st.divider()
     
     # Abas para diferentes rankings
-    rank_tab1, rank_tab2, rank_tab3, rank_tab4 = st.tabs(["📈 Rentabilidade", "💰 Valor de Mercado", "🏛️ Solidez", "📊 Eficiência"])
+    rank_tab1, rank_tab2, rank_tab3, rank_tab4 = st.tabs(["📈 Rentabilidade", "💰 Lucro e Receita", "🏛️ Solidez", "📊 Eficiência"])
     
     with rank_tab1:
         col1, col2 = st.columns(2)
@@ -649,7 +745,7 @@ if modo_analise == "Dados Gerais":
                 st.warning("Não há dados de WACC disponíveis para ranking")
 
 # ==============================
-# TELA - VISÃO POR EMPRESA (COM CAIXA OPERACIONAL)
+# TELA - VISÃO POR EMPRESA (COM DIVIDENDOS)
 # ==============================
 elif modo_analise == "📈 Visão por Empresa":
     st.header(f"📊 Análise Detalhada - {ticker_selecionado}")
@@ -662,7 +758,7 @@ elif modo_analise == "📈 Visão por Empresa":
             st.subheader(f"Ano {ano_selecionado}")
             
             if not df_filtrado.empty:
-                # KPIs Principais - COM CAIXA OPERACIONAL
+                # KPIs Principais - ADICIONANDO CAIXA OPERACIONAL COMO QUINTA COLUNA
                 col1, col2, col3, col4, col5 = st.columns(5)
                 
                 with col1:
@@ -698,13 +794,17 @@ elif modo_analise == "📈 Visão por Empresa":
                                  help="WACC não pôde ser calculado devido a dados insuficientes")
                 
                 with col5:
-                    # CAIXA OPERACIONAL
-                    valor_caixa = df_filtrado['Caixa Líquido Atividades Operacionais'].iloc[0]
-                    if pd.notna(valor_caixa):
-                        st.metric("Caixa Operacional", formatar_moeda_brasil_correta(valor_caixa))
+                    # ADIÇÃO: Caixa Líquido Atividades Operacionais
+                    if 'Caixa Líquido Atividades Operacionais' in df_filtrado.columns:
+                        valor_caixa = df_filtrado['Caixa Líquido Atividades Operacionais'].iloc[0]
+                        if pd.notna(valor_caixa):
+                            st.metric("Caixa Operacional", formatar_moeda_brasil_correta(valor_caixa))
+                        else:
+                            st.metric("Caixa Operacional*", "N/A", 
+                                     help="Dados de caixa operacional não disponíveis")
                     else:
                         st.metric("Caixa Operacional*", "N/A", 
-                                 help="Dados de caixa operacional não disponíveis")
+                                 help="Coluna 'Caixa Líquido Atividades Operacionais' não encontrada no dataset")
                 
                 # VERIFICAÇÃO LUCRO ECONÔMICO 1 vs 2
                 st.subheader("🔍 Verificação: Lucro Econômico 1 vs 2")
@@ -742,8 +842,12 @@ elif modo_analise == "📈 Visão por Empresa":
                 
                 st.divider()
                 
-                # Abas para diferentes categorias de indicadores - COM ABA DE FLUXO DE CAIXA
-                tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["📈 Rentabilidade", "💰 EBITDA", "🏛️ Estrutura Capital", "💸 Custo Capital", "📊 Lucro Econômico", "💵 Fluxo de Caixa", "📋 Dados Brutos"])
+                # Abas para diferentes categorias de indicadores - ADICIONANDO ABA DE DIVIDENDOS
+                tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+                    "📈 Rentabilidade", "💰 EBITDA", "🏛️ Estrutura Capital", 
+                    "💸 Custo Capital", "📊 Lucro Econômico", "💵 Fluxo de Caixa", 
+                    "📋 Dados Brutos", "💰 Dividendos"  # NOVA ABA
+                ])
                 
                 with tab1:
                     st.subheader("Indicadores de Rentabilidade")
@@ -809,7 +913,9 @@ elif modo_analise == "📈 Visão por Empresa":
                             st.info("ℹ️ Dados de Depreciação/Amortização não disponíveis. EBITDA calculado como aproximação do Resultado Operacional.")
                             st.write(f"**EBITDA ≈ Resultado Operacional = {formatar_moeda_brasil_correta(ebitda_valor)}**")
                         
-                        # VALUATION POR LUCRO ECONÔMICO/SELIC
+                        # =============================================================
+                        # 🏦 SEÇÃO CORRIGIDA: VALUATION POR LUCRO ECONÔMICO/SELIC
+                        # =============================================================
                         st.divider()
                         st.subheader("🏦 Valuation por Lucro Econômico/SELIC")
 
@@ -850,6 +956,49 @@ elif modo_analise == "📈 Visão por Empresa":
                                 
                                 # Buscar cotação atual
                                 dados_cotacao = buscar_cotacao_atual(ticker_selecionado)
+                                
+                                # CÁLCULO DA SELIC IMPLÍCITA (NOVO)
+                                selic_implicita = None
+                                market_cap_atual = None
+                                if dados_cotacao and numero_acoes and numero_acoes > 0:
+                                    market_cap_atual = dados_cotacao['cotacao'] * numero_acoes
+                                    if lucro_economico_valor > 0:
+                                        # Fórmula: SELIC implícita = (Lucro Econômico / Market Cap) × 100
+                                        selic_implicita = (lucro_economico_valor * 1000 / market_cap_atual) * 100
+                                
+                                # CÁLCULO DO EBITDA NECESSÁRIO (NOVO)
+                                ebitda_necessario = None
+                                if dados_cotacao and numero_acoes and numero_acoes > 0:
+                                    # Fórmula: EBITDA necessário = (Market Cap × (SELIC/100) + DA + WACC × Investimento) / (1 - relação EBITDA/Lucro Econ)
+                                    # Simplificação: Vamos usar uma aproximação baseada na margem operacional atual
+                                    investimento_medio = df_filtrado["Investimento Médio"].iloc[0] if pd.notna(df_filtrado["Investimento Médio"].iloc[0]) else 0
+                                    wacc = df_filtrado["wacc"].iloc[0] if pd.notna(df_filtrado["wacc"].iloc[0]) else 0
+                                    
+                                    # Encontrar depreciação e amortização
+                                    nome_coluna_da = None
+                                    for col in df_filtrado.columns:
+                                        if 'depreciação' in col.lower() and 'amortização' in col.lower():
+                                            nome_coluna_da = col
+                                            break
+                                    
+                                    depreciacao_amortizacao = 0
+                                    if nome_coluna_da and pd.notna(df_filtrado[nome_coluna_da].iloc[0]):
+                                        depreciacao_amortizacao = abs(df_filtrado[nome_coluna_da].iloc[0])
+                                    
+                                    # Calcular relação atual entre EBITDA e Lucro Econômico
+                                    ebitda_atual = df_filtrado["EBITDA"].iloc[0] if pd.notna(df_filtrado["EBITDA"].iloc[0]) else 0
+                                    if ebitda_atual > 0 and lucro_economico_valor > 0:
+                                        relacao_ebitda_lucro_eco = ebitda_atual / lucro_economico_valor
+                                    else:
+                                        # Se não temos dados, usar uma relação conservadora de 2:1
+                                        relacao_ebitda_lucro_eco = 2.0
+                                    
+                                    # Cálculo do EBITDA necessário
+                                    # Lucro Econômico necessário = Market Cap × (SELIC/100)
+                                    lucro_economico_necessario = market_cap_atual * (selic_percentual / 100) / 1000  # Dividir por 1000 para voltar para R$ mil
+                                    
+                                    # EBITDA necessário = Lucro Econômico necessário × relação EBITDA/Lucro Econ
+                                    ebitda_necessario = lucro_economico_necessario * relacao_ebitda_lucro_eco
                                 
                                 # Exibir resultados do valuation
                                 col_val1, col_val2, col_val3, col_val4 = st.columns(4)
@@ -916,6 +1065,163 @@ elif modo_analise == "📈 Visão por Empresa":
                                     Cotação Esperada = {formatar_moeda_brasil_correta(valor_empresa_reais / 1000)} ÷ {formatar_numero_brasil_correto(numero_acoes, 0)}
                                     Cotação Esperada = R$ {cotacao_esperada:,.2f}
                                     ```
+                                    """)
+                                
+                                # NOVO: CÁLCULO DA SELIC IMPLÍCITA
+                                if selic_implicita is not None:
+                                    st.info(f"""
+                                    **🎯 SELIC Implícita (Para igualar à cotação atual):**
+                                    ```
+                                    Market Cap Atual = Cotação Atual × Número de Ações
+                                    Market Cap Atual = R$ {dados_cotacao['cotacao']:,.2f} × {formatar_numero_brasil_correto(numero_acoes, 0)}
+                                    Market Cap Atual = {formatar_moeda_brasil_correta(market_cap_atual / 1000)}
+                                    
+                                    SELIC Implícita = (Lucro Econômico ÷ Market Cap Atual) × 100
+                                    SELIC Implícita = ({formatar_moeda_brasil_correta(lucro_economico_valor)} ÷ {formatar_moeda_brasil_correta(market_cap_atual / 1000)}) × 100
+                                    SELIC Implícita = {selic_implicita:.1f}%
+                                    ```
+                                    
+                                    **💡 Interpretação:**
+                                    - Para que a **cotação esperada** seja igual à **cotação atual** (R$ {dados_cotacao['cotacao']:,.2f})
+                                    - A **SELIC** deveria ser de **{selic_implicita:.1f}%** a.a.
+                                    - Isso significa que o mercado está precificando a empresa como se a taxa de desconto fosse {selic_implicita:.1f}% a.a.
+                                    """)
+                                    
+                                    # Análise da SELIC implícita
+                                    if selic_implicita < selic_percentual:
+                                        st.success(f"**✅ SELIC Implícita ({selic_implicita:.1f}%) < SELIC Atual ({selic_percentual}%)**")
+                                        st.write("O mercado está exigindo uma taxa de retorno **menor** que a SELIC atual, indicando **confiança** na empresa.")
+                                    else:
+                                        st.warning(f"**⚠️ SELIC Implícita ({selic_implicita:.1f}%) > SELIC Atual ({selic_percentual}%)**")
+                                        st.write("O mercado está exigindo uma taxa de retorno **maior** que a SELIC atual, indicando **mais risco** percebido na empresa.")
+                                
+                                # NOVO: CÁLCULO DO EBITDA NECESSÁRIO
+                                if ebitda_necessario is not None and ebitda_necessario > 0:
+                                    ebitda_atual = df_filtrado["EBITDA"].iloc[0] if pd.notna(df_filtrado["EBITDA"].iloc[0]) else 0
+                                    variacao_necessaria = ((ebitda_necessario - ebitda_atual) / ebitda_atual) * 100
+                                    
+                                    st.info(f"""
+                                    **📈 EBITDA Necessário (Para igualar à cotação atual com SELIC {selic_percentual}%):**
+                                    ```
+                                    Market Cap Atual = {formatar_moeda_brasil_correta(market_cap_atual / 1000)}
+                                    Lucro Econômico Necessário = Market Cap × (SELIC/100)
+                                    Lucro Econômico Necessário = {formatar_moeda_brasil_correta(market_cap_atual / 1000)} × ({selic_percentual}%/100)
+                                    Lucro Econômico Necessário = {formatar_moeda_brasil_correta(lucro_economico_necessario)}
+                                    
+                                    EBITDA Necessário = Lucro Econômico Necessário × (EBITDA Atual ÷ Lucro Econ Atual)
+                                    EBITDA Necessário = {formatar_moeda_brasil_correta(lucro_economico_necessario)} × ({formatar_moeda_brasil_correta(ebitda_atual)} ÷ {formatar_moeda_brasil_correta(lucro_economico_valor)})
+                                    EBITDA Necessário = {formatar_moeda_brasil_correta(ebitda_necessario)}
+                                    ```
+                                    
+                                    **💡 Interpretação:**
+                                    - Para justificar a **cotação atual** (R$ {dados_cotacao['cotacao']:,.2f}) com **SELIC atual** ({selic_percentual}%)
+                                    - A empresa precisaria ter um **EBITDA** de **{formatar_moeda_brasil_correta(ebitda_necessario)}**
+                                    - EBITDA Atual: {formatar_moeda_brasil_correta(ebitda_atual)}
+                                    - Variação necessária: {variacao_necessaria:+.1f}%
+                                    """)
+                                    
+                                    # Análise do EBITDA necessário
+                                    if variacao_necessaria > 0:
+                                        st.warning(f"**📈 EBITDA precisa crescer {variacao_necessaria:+.1f}%**")
+                                        st.write("Para justificar a cotação atual, a empresa precisa **aumentar** seu EBITDA significativamente.")
+                                    else:
+                                        st.success(f"**✅ EBITDA atual já justifica a cotação**")
+                                        st.write("O EBITDA atual já é suficiente para justificar a cotação de mercado com a SELIC atual.")
+                                
+                                # Mostrar também os dados de EBITDA para referência
+                                if ebitda_valor:
+                                    st.info(f"""
+                                    **📊 Dados de Referência Atuais:**
+                                    - **EBITDA:** {formatar_moeda_brasil_correta(ebitda_valor)}
+                                    - **Lucro Econômico:** {formatar_moeda_brasil_correta(lucro_economico_valor)}
+                                    - **Investimento Médio:** {formatar_moeda_brasil_correta(df_filtrado['Investimento Médio'].iloc[0])}
+                                    - **ROI:** {formatar_percentual_brasil(df_filtrado['ROI'].iloc[0], 2)}
+                                    - **WACC:** {formatar_percentual_brasil(df_filtrado['wacc'].iloc[0], 2)}
+                                    """)
+                                
+                                # Se temos dados da cotação, fazer análise comparativa
+                                if dados_cotacao:
+                                    st.divider()
+                                    st.subheader("📈 Análise Comparativa com Cotação de Mercado")
+                                    
+                                    # Informações da empresa
+                                    col_info1, col_info2, col_info3, col_info4 = st.columns(4)
+                                    
+                                    with col_info1:
+                                        st.metric("Cotação Atual", f"R$ {dados_cotacao['cotacao']:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+                                    
+                                    with col_info2:
+                                        if cotacao_esperada:
+                                            diferenca_percentual = ((dados_cotacao['cotacao'] - cotacao_esperada) / cotacao_esperada) * 100
+                                            st.metric(
+                                                "Diferença vs Calculado", 
+                                                f"{diferenca_percentual:+.1f}%",
+                                                delta=f"{diferenca_percentual:+.1f}%"
+                                            )
+                                    
+                                    with col_info3:
+                                        st.metric("Setor", dados_cotacao['setor'])
+                                    
+                                    with col_info4:
+                                        if dados_cotacao['market_cap']:
+                                            market_cap_tri = dados_cotacao['market_cap'] / 1e12
+                                            st.metric("Market Cap", f"R$ {market_cap_tri:,.2f} tri".replace(",", "X").replace(".", ",").replace("X", "."))
+                                    
+                                    # Análise de valuation implícito
+                                    st.write("**💡 Interpretação:**")
+                                    
+                                    if cotacao_esperada:
+                                        st.write(f"""
+                                        - **Lucro Econômico Anual:** {formatar_moeda_brasil_correta(lucro_economico_valor)}
+                                        - **Taxa de Desconto (SELIC):** {selic_percentual}% a.a.
+                                        - **Valor Justo Calculado:** {formatar_moeda_brasil_correta(valor_empresa_reais / 1000)}
+                                        - **Número de Ações:** {formatar_numero_brasil_correto(numero_acoes, 0)}
+                                        - **Cotação Esperada:** R$ {cotacao_esperada:,.2f}
+                                        - **Cotação Atual ({dados_cotacao['data_atualizacao']}):** R$ {dados_cotacao['cotacao']:,.2f}
+                                        - **Diferença:** {diferenca_percentual:+.1f}%
+                                        """)
+                                    else:
+                                        st.write(f"""
+                                        - **Lucro Econômico Anual:** {formatar_moeda_brasil_correta(lucro_economico_valor)}
+                                        - **Taxa de Desconto (SELIC):** {selic_percentual}% a.a.
+                                        - **Valor Justo Calculado:** {formatar_moeda_brasil_correta(valor_empresa_reais / 1000)}
+                                        - **Cotação Atual ({dados_cotacao['data_atualizacao']}):** R$ {dados_cotacao['cotacao']:,.2f}
+                                        """)
+                                    
+                                    # Gráfico comparativo
+                                    if cotacao_esperada:
+                                        st.subheader("🎯 Comparação Visual")
+                                        
+                                        fig_comparativo = criar_grafico_comparativo(
+                                            cotacao_esperada, 
+                                            dados_cotacao['cotacao'], 
+                                            ticker_selecionado
+                                        )
+                                        st.plotly_chart(fig_comparativo, use_container_width=True)
+                                        
+                                        # Análise qualitativa
+                                        if diferenca_percentual > 20:
+                                            st.error("""
+                                            **🔴 Sobrevalorizado:** A cotação atual está significativamente acima do valuation calculado.
+                                            *Possíveis razões:* Expectativas de crescimento futuro, fatores setoriais favoráveis, ou especulação de mercado.
+                                            """)
+                                        elif diferenca_percentual < -20:
+                                            st.success("""
+                                            **🟢 Subvalorizado:** A cotação atual está significativamente abaixo do valuation calculado.
+                                            *Possíveis oportunidades:* Valorização potencial, retorno ao valuation justo.
+                                            """)
+                                        else:
+                                            st.info("""
+                                            **🟡 Valuation Próximo:** A cotação atual está alinhada com o valuation calculado.
+                                            *Interpretação:* Preço de mercado condizente com fundamentos.
+                                            """)
+                                
+                                else:
+                                    st.warning("""
+                                    **ℹ️ Informações Adicionais Necessárias:**
+                                    - Para análise completa, é necessário o número de ações em circulação
+                                    - Com o número de ações, podemos calcular o preço por ação teórico
+                                    - Considere também: crescimento futuro, perspectivas do setor, concorrência
                                     """)
                             
                             else:
@@ -1022,52 +1328,55 @@ elif modo_analise == "📈 Visão por Empresa":
                         st.warning("Não há dados de lucro econômico disponíveis")
                 
                 with tab6:
-                    # ABA: FLUXO DE CAIXA OPERACIONAL
+                    # NOVA ABA: FLUXO DE CAIXA OPERACIONAL
                     st.subheader("💵 Fluxo de Caixa Operacional")
                     
-                    valor_caixa = df_filtrado['Caixa Líquido Atividades Operacionais'].iloc[0]
-                    
-                    if pd.notna(valor_caixa):
-                        # KPI Principal
-                        col1, col2, col3 = st.columns(3)
+                    if 'Caixa Líquido Atividades Operacionais' in df_filtrado.columns:
+                        valor_caixa = df_filtrado['Caixa Líquido Atividades Operacionais'].iloc[0]
                         
-                        with col1:
-                            st.metric("Caixa Operacional", formatar_moeda_brasil_correta(valor_caixa))
-                        
-                        with col2:
-                            # Comparação com Lucro Líquido
-                            lucro_liquido = df_filtrado["Lucro/Prejuízo Consolidado do Período"].iloc[0] if pd.notna(df_filtrado["Lucro/Prejuízo Consolidado do Período"].iloc[0]) else 0
+                        if pd.notna(valor_caixa):
+                            # KPI Principal
+                            col1, col2, col3 = st.columns(3)
+                            
+                            with col1:
+                                st.metric("Caixa Operacional", formatar_moeda_brasil_correta(valor_caixa))
+                            
+                            with col2:
+                                # Comparação com Lucro Líquido
+                                lucro_liquido = df_filtrado["Lucro/Prejuízo Consolidado do Período"].iloc[0] if pd.notna(df_filtrado["Lucro/Prejuízo Consolidado do Período"].iloc[0]) else 0
+                                if lucro_liquido != 0:
+                                    relacao_caixa_lucro = (valor_caixa / lucro_liquido) * 100
+                                    st.metric("Caixa/Lucro", f"{relacao_caixa_lucro:.1f}%")
+                            
+                            with col3:
+                                # Comparação com EBITDA
+                                ebitda = df_filtrado["EBITDA"].iloc[0] if "EBITDA" in df_filtrado.columns and pd.notna(df_filtrado["EBITDA"].iloc[0]) else 0
+                                if ebitda != 0:
+                                    relacao_caixa_ebitda = (valor_caixa / ebitda) * 100
+                                    st.metric("Caixa/EBITDA", f"{relacao_caixa_ebitda:.1f}%")
+                            
+                            # Análise Qualitativa
+                            st.subheader("📊 Análise do Fluxo de Caixa")
+                            
+                            if valor_caixa > 0:
+                                st.success("**✅ Geração Positiva de Caixa**")
+                                st.write("A empresa está gerando caixa líquido positivo em suas atividades operacionais.")
+                            else:
+                                st.warning("**⚠️ Geração Negativa de Caixa**")
+                                st.write("A empresa está consumindo caixa em suas atividades operacionais.")
+                            
+                            # Comparação com indicadores de rentabilidade
                             if lucro_liquido != 0:
-                                relacao_caixa_lucro = (valor_caixa / lucro_liquido) * 100
-                                st.metric("Caixa/Lucro", f"{relacao_caixa_lucro:.1f}%")
-                        
-                        with col3:
-                            # Comparação com EBITDA
-                            ebitda = df_filtrado["EBITDA"].iloc[0] if "EBITDA" in df_filtrado.columns and pd.notna(df_filtrado["EBITDA"].iloc[0]) else 0
-                            if ebitda != 0:
-                                relacao_caixa_ebitda = (valor_caixa / ebitda) * 100
-                                st.metric("Caixa/EBITDA", f"{relacao_caixa_ebitda:.1f}%")
-                        
-                        # Análise Qualitativa
-                        st.subheader("📊 Análise do Fluxo de Caixa")
-                        
-                        if valor_caixa > 0:
-                            st.success("**✅ Geração Positiva de Caixa**")
-                            st.write("A empresa está gerando caixa líquido positivo em suas atividades operacionais.")
+                                if abs(relacao_caixa_lucro - 100) > 50:
+                                    if relacao_caixa_lucro > 150:
+                                        st.info("**💡 Caixa > Lucro:** A empresa gera mais caixa que lucro contábil, indicando boa qualidade do lucro.")
+                                    elif relacao_caixa_lucro < 50:
+                                        st.warning("**💡 Caixa < Lucro:** A empresa gera menos caixa que lucro contábil, pode indicar diferenças temporárias ou baixa qualidade do lucro.")
+                            
                         else:
-                            st.warning("**⚠️ Geração Negativa de Caixa**")
-                            st.write("A empresa está consumindo caixa em suas atividades operacionais.")
-                        
-                        # Comparação com indicadores de rentabilidade
-                        if lucro_liquido != 0:
-                            if abs(relacao_caixa_lucro - 100) > 50:
-                                if relacao_caixa_lucro > 150:
-                                    st.info("**💡 Caixa > Lucro:** A empresa gera mais caixa que lucro contábil, indicando boa qualidade do lucro.")
-                                elif relacao_caixa_lucro < 50:
-                                    st.warning("**💡 Caixa < Lucro:** A empresa gera menos caixa que lucro contábil, pode indicar diferenças temporárias ou baixa qualidade do lucro.")
-                        
+                            st.warning("Dados de Caixa Líquido de Atividades Operacionais não disponíveis para este ano")
                     else:
-                        st.warning("Dados de Caixa Líquido de Atividades Operacionais não disponíveis para este ano")
+                        st.warning("Coluna 'Caixa Líquido Atividades Operacionais' não encontrada no dataset")
                 
                 with tab7:
                     st.subheader("Dados Financeiros Brutos")
@@ -1082,7 +1391,7 @@ elif modo_analise == "📈 Visão por Empresa":
                         "Patrimônio Líquido Consolidado",
                         "Empréstimos e Financiamentos - Circulante",
                         "Empréstimos e Financiamentos - Não Circulante",
-                        "Caixa Líquido Atividades Operacionais"  # INCLUÍDO
+                        "Caixa Líquido Atividades Operacionais"  # ADICIONADO
                     ]
                     
                     # Adicionar a coluna de depreciação/amortização se existir
@@ -1106,6 +1415,190 @@ elif modo_analise == "📈 Visão por Empresa":
                     
                     st.dataframe(pd.DataFrame.from_dict(dados_brutos, orient='index', columns=['Valor']), 
                                use_container_width=True)
+                
+                with tab8:
+                    # NOVA ABA: DIVIDENDOS
+                    st.subheader("💰 Histórico de Dividendos")
+                    
+                    # Buscar dividendos
+                    with st.spinner("Buscando dados de dividendos..."):
+                        df_dividendos = buscar_dividendos_historicos(ticker_selecionado)
+                    
+                    if df_dividendos is not None and not df_dividendos.empty:
+                        # Estatísticas rápidas
+                        stats = calcular_estatisticas_dividendos(df_dividendos)
+                        
+                        col1, col2, col3, col4 = st.columns(4)
+                        
+                        with col1:
+                            st.metric(
+                                "Último Dividendo", 
+                                f"R$ {stats['ultimo_dividendo']:.4f}".replace(".", ","),
+                                help=f"Data: {stats['data_ultimo'].strftime('%d/%m/%Y') if stats['data_ultimo'] else 'N/A'}"
+                            )
+                        
+                        with col2:
+                            st.metric(
+                                "Total Distribuído", 
+                                formatar_moeda_brasil_correta(stats['total_dividendos'] * 1000),  # Converter para R$
+                                help="Soma histórica de dividendos"
+                            )
+                        
+                        with col3:
+                            st.metric(
+                                "Média Anual", 
+                                formatar_moeda_brasil_correta(stats['media_anual'] * 1000),
+                                help="Média de dividendos por ano"
+                            )
+                        
+                        with col4:
+                            st.metric(
+                                "Frequência/Ano", 
+                                f"{stats['frequencia_media']:.1f}",
+                                help="Pagamentos médios por ano"
+                            )
+                        
+                        # Gráfico de dividendos ao longo do tempo
+                        st.subheader("📈 Evolução dos Dividendos")
+                        
+                        fig_dividendos = px.line(
+                            df_dividendos, 
+                            x='Data', 
+                            y='Dividendo',
+                            title=f'Dividendos por Ação - {ticker_selecionado}',
+                            markers=True
+                        )
+                        fig_dividendos.update_layout(
+                            yaxis_title='Dividendo por Ação (R$)',
+                            xaxis_title='Data',
+                            height=400
+                        )
+                        fig_dividendos.update_yaxis(tickformat=",.4f")
+                        st.plotly_chart(fig_dividendos, use_container_width=True)
+                        
+                        # Dividendos por ano
+                        st.subheader("📊 Dividendos por Ano")
+                        dividendos_ano = df_dividendos.groupby('Ano')['Dividendo'].sum().reset_index()
+                        dividendos_ano['Dividendo Total'] = dividendos_ano['Dividendo']
+                        
+                        fig_ano = px.bar(
+                            dividendos_ano,
+                            x='Ano',
+                            y='Dividendo Total',
+                            title='Total de Dividendos por Ano'
+                        )
+                        fig_ano.update_layout(height=400)
+                        st.plotly_chart(fig_ano, use_container_width=True)
+                        
+                        # Tabela detalhada
+                        st.subheader("📋 Detalhamento dos Dividendos")
+                        
+                        # Formatar a tabela
+                        df_display = df_dividendos.copy()
+                        df_display['Dividendo'] = df_display['Dividendo'].apply(
+                            lambda x: f"R$ {x:.4f}".replace(".", ",")
+                        )
+                        df_display['Data'] = df_display['Data'].dt.strftime('%d/%m/%Y')
+                        df_display = df_display[['Data', 'Dividendo', 'Ano']].sort_values('Data', ascending=False)
+                        
+                        st.dataframe(df_display, use_container_width=True)
+                        
+                        # Análise de yield (se tivermos cotação)
+                        st.subheader("🎯 Análise de Dividend Yield")
+                        
+                        # Buscar cotação atual para cálculo do yield
+                        dados_cotacao = buscar_cotacao_atual(ticker_selecionado)
+                        
+                        if dados_cotacao and stats['ultimo_dividendo'] > 0:
+                            cotacao_atual = dados_cotacao['cotacao']
+                            
+                            # Calcular dividend yield baseado no último dividendo
+                            dy_ultimo = (stats['ultimo_dividendo'] / cotacao_atual) * 100
+                            
+                            # Calcular dividend yield médio anual
+                            dy_medio = (stats['media_anual'] / cotacao_atual) * 100
+                            
+                            col_dy1, col_dy2, col_dy3 = st.columns(3)
+                            
+                            with col_dy1:
+                                st.metric(
+                                    "Dividend Yield (Último)",
+                                    f"{dy_ultimo:.2f}%",
+                                    help="Baseado no último dividendo e cotação atual"
+                                )
+                            
+                            with col_dy2:
+                                st.metric(
+                                    "Dividend Yield (Médio)",
+                                    f"{dy_medio:.2f}%",
+                                    help="Baseado na média anual de dividendos"
+                                )
+                            
+                            with col_dy3:
+                                st.metric(
+                                    "Cotação Atual",
+                                    f"R$ {cotacao_atual:.2f}".replace(".", ",")
+                                )
+                            
+                            # Análise qualitativa do yield
+                            st.write("**💡 Análise do Dividend Yield:**")
+                            if dy_ultimo > 6:
+                                st.success("**✅ Yield Alto:** Acima de 6% ao ano - potencialmente atrativo para investidores de renda")
+                            elif dy_ultimo > 3:
+                                st.info("**🟡 Yield Moderado:** Entre 3% e 6% ao ano - dentro da média do mercado")
+                            else:
+                                st.warning("**🔴 Yield Baixo:** Abaixo de 3% ao ano - foco pode ser mais no crescimento que na renda")
+                        
+                        # Projeção de dividendos futuros
+                        st.subheader("🔮 Projeção de Dividendos")
+                        
+                        projecao = prever_dividendos(df_dividendos)
+                        
+                        if projecao:
+                            col_proj1, col_proj2, col_proj3 = st.columns(3)
+                            
+                            with col_proj1:
+                                crescimento_formatado = formatar_percentual_brasil(projecao['crescimento_medio'], 2)
+                                st.metric(
+                                    "Crescimento Médio",
+                                    crescimento_formatado,
+                                    help="Crescimento médio histórico dos dividendos"
+                                )
+                            
+                            with col_proj2:
+                                st.metric(
+                                    "Projeção Próximo Ano",
+                                    f"R$ {projecao['projecao_proximo_ano']:.4f}".replace(".", ","),
+                                    help="Projeção baseada no crescimento médio"
+                                )
+                            
+                            with col_proj3:
+                                st.metric(
+                                    "Confiabilidade",
+                                    projecao['confiabilidade'],
+                                    help="Baseada na quantidade de dados históricos"
+                                )
+                            
+                            st.info("""
+                            **💡 Observação sobre Projeções:**
+                            - Projeções são baseadas apenas em dados históricos
+                            - Não consideram mudanças estratégicas da empresa
+                            - Mercado, economia e setor podem impactar resultados futuros
+                            - Use como referência, não como garantia
+                            """)
+                        
+                    else:
+                        st.warning(f"""
+                        **ℹ️ Dados de Dividendos Não Encontrados**
+                        
+                        Não foi possível recuperar o histórico de dividendos para {ticker_selecionado}.
+                        
+                        Possíveis razões:
+                        - A empresa não distribui dividendos regularmente
+                        - O ticker pode estar com formato diferente
+                        - Limitações temporárias na API do Yahoo Finance
+                        - A empresa pode ser recente no mercado
+                        """)
             
             else:
                 st.warning(f"Não há dados disponíveis para {ticker_selecionado} no ano {ano_selecionado}")
@@ -1308,68 +1801,110 @@ elif modo_analise == "📈 Visão por Empresa":
                     )
                     st.plotly_chart(fig_ebitda, use_container_width=True)
                 
-                # QUARTA LINHA - FLUXO DE CAIXA OPERACIONAL
+                # QUARTA LINHA - FLUXO DE CAIXA OPERACIONAL (NOVA SEÇÃO)
                 st.subheader("💸 Evolução do Fluxo de Caixa Operacional")
-                col7, col8 = st.columns(2)
-                
-                with col7:
-                    # Caixa Líquido Atividades Operacionais
-                    fig_caixa = px.line(df_empresa_todos_anos, x='Ano', y='Caixa Líquido Atividades Operacionais',
-                                      title='Caixa Líquido de Atividades Operacionais')
-                    fig_caixa.update_layout(
-                        yaxis_title='Caixa Operacional',
-                        yaxis_tickformat=',.0f',
-                        height=400
-                    )
-                    st.plotly_chart(fig_caixa, use_container_width=True)
-                
-                with col8:
-                    # Comparação Caixa vs Lucro Líquido
-                    df_comparacao = df_empresa_todos_anos.copy()
-                    df_comparacao = df_comparacao[df_comparacao['Caixa Líquido Atividades Operacionais'].notna() & 
-                                                df_comparacao['Lucro/Prejuízo Consolidado do Período'].notna()]
+                if 'Caixa Líquido Atividades Operacionais' in df_empresa_todos_anos.columns:
+                    col7, col8 = st.columns(2)
                     
-                    if not df_comparacao.empty:
-                        fig_comparacao = go.Figure()
-                        
-                        fig_comparacao.add_trace(go.Scatter(
-                            x=df_comparacao['Ano'],
-                            y=df_comparacao['Caixa Líquido Atividades Operacionais'],
-                            mode='lines+markers',
-                            name='Caixa Operacional',
-                            line=dict(color='#27ae60', width=3),
-                            marker=dict(size=8)
-                        ))
-                        
-                        fig_comparacao.add_trace(go.Scatter(
-                            x=df_comparacao['Ano'],
-                            y=df_comparacao['Lucro/Prejuízo Consolidado do Período'],
-                            mode='lines+markers',
-                            name='Lucro Líquido',
-                            line=dict(color='#e74c3c', width=3),
-                            marker=dict(size=8)
-                        ))
-                        
-                        fig_comparacao.update_layout(
-                            title='Comparação: Caixa Operacional vs Lucro Líquido',
-                            xaxis_title='Ano',
-                            yaxis_title='Valor',
+                    with col7:
+                        # Caixa Líquido Atividades Operacionais
+                        fig_caixa = px.line(df_empresa_todos_anos, x='Ano', y='Caixa Líquido Atividades Operacionais',
+                                          title='Caixa Líquido de Atividades Operacionais')
+                        fig_caixa.update_layout(
+                            yaxis_title='Caixa Operacional',
                             yaxis_tickformat=',.0f',
-                            height=400,
-                            showlegend=True
+                            height=400
                         )
-                        st.plotly_chart(fig_comparacao, use_container_width=True)
+                        st.plotly_chart(fig_caixa, use_container_width=True)
+                    
+                    with col8:
+                        # Comparação Caixa vs Lucro Líquido
+                        df_comparacao = df_empresa_todos_anos.copy()
+                        df_comparacao = df_comparacao[df_comparacao['Caixa Líquido Atividades Operacionais'].notna() & 
+                                                    df_comparacao['Lucro/Prejuízo Consolidado do Período'].notna()]
+                        
+                        if not df_comparacao.empty:
+                            fig_comparacao = go.Figure()
+                            
+                            fig_comparacao.add_trace(go.Scatter(
+                                x=df_comparacao['Ano'],
+                                y=df_comparacao['Caixa Líquido Atividades Operacionais'],
+                                mode='lines+markers',
+                                name='Caixa Operacional',
+                                line=dict(color='#27ae60', width=3),
+                                marker=dict(size=8)
+                            ))
+                            
+                            fig_comparacao.add_trace(go.Scatter(
+                                x=df_comparacao['Ano'],
+                                y=df_comparacao['Lucro/Prejuízo Consolidado do Período'],
+                                mode='lines+markers',
+                                name='Lucro Líquido',
+                                line=dict(color='#e74c3c', width=3),
+                                marker=dict(size=8)
+                            ))
+                            
+                            fig_comparacao.update_layout(
+                                title='Comparação: Caixa Operacional vs Lucro Líquido',
+                                xaxis_title='Ano',
+                                yaxis_title='Valor',
+                                yaxis_tickformat=',.0f',
+                                height=400,
+                                showlegend=True
+                            )
+                            st.plotly_chart(fig_comparacao, use_container_width=True)
+                
+                # QUINTA LINHA - DIVIDENDOS (NOVA SEÇÃO)
+                st.subheader("💰 Evolução dos Dividendos")
+                
+                # Buscar dividendos para análise histórica
+                with st.spinner("Buscando dados históricos de dividendos..."):
+                    df_dividendos = buscar_dividendos_historicos(ticker_selecionado)
+                
+                if df_dividendos is not None and not df_dividendos.empty:
+                    col9, col10 = st.columns(2)
+                    
+                    with col9:
+                        # Dividendos por ano
+                        dividendos_ano = df_dividendos.groupby('Ano')['Dividendo'].sum().reset_index()
+                        
+                        fig_dividendos_ano = px.bar(
+                            dividendos_ano,
+                            x='Ano',
+                            y='Dividendo',
+                            title='Total de Dividendos por Ano'
+                        )
+                        fig_dividendos_ano.update_layout(
+                            yaxis_title='Dividendos por Ação (R$)',
+                            height=400
+                        )
+                        st.plotly_chart(fig_dividendos_ano, use_container_width=True)
+                    
+                    with col10:
+                        # Média móvel de dividendos
+                        df_dividendos_sorted = df_dividendos.sort_values('Data')
+                        df_dividendos_sorted['Media_Movel'] = df_dividendos_sorted['Dividendo'].rolling(window=4, min_periods=1).mean()
+                        
+                        fig_media_movel = px.line(
+                            df_dividendos_sorted,
+                            x='Data',
+                            y=['Dividendo', 'Media_Movel'],
+                            title='Dividendos e Média Móvel (4 períodos)',
+                            labels={'value': 'Dividendo por Ação (R$)', 'variable': 'Legenda'}
+                        )
+                        fig_media_movel.update_layout(height=400)
+                        st.plotly_chart(fig_media_movel, use_container_width=True)
                 
                 # Tabela resumo da evolução - INCLUINDO CAIXA OPERACIONAL
                 st.subheader("📋 Resumo da Evolução - Principais Indicadores")
                 
-                # Selecionar indicadores chave para a tabela - INCLUINDO CAIXA OPERACIONAL
+                # Selecionar indicadores chave para a tabela - ADICIONANDO CAIXA OPERACIONAL
                 indicadores_resumo = ['ROE', 'ROA', 'ROI', 'Margem Líquida', 'wacc', 'Percentual Capital Próprio', 
                                     'Lucro Econômico 1', 'Resultado Antes do Resultado Financeiro e dos Tributos', 'EBITDA',
-                                    'Caixa Líquido Atividades Operacionais']
+                                    'Caixa Líquido Atividades Operacionais']  # ADICIONADO
                 df_resumo = df_empresa_todos_anos[['Ano'] + [col for col in indicadores_resumo if col in df_empresa_todos_anos.columns]]
                 
-                # Formatar para porcentagem e valores monetários - INCLUINDO CAIXA
+                # Formatar para porcentagem e valores monetários - ATUALIZADO PARA INCLUIR CAIXA
                 def formatar_valor(valor, coluna):
                     if coluna in ['ROE', 'ROA', 'ROI', 'Margem Líquida', 'wacc', 'Percentual Capital Próprio']:
                         return formatar_percentual_brasil(valor, 2) if pd.notna(valor) else "N/A"
@@ -1390,7 +1925,7 @@ elif modo_analise == "📈 Visão por Empresa":
                 st.info("ℹ️ São necessários dados de múltiplos anos para análise de evolução temporal")
 
 # ==============================
-# TELA - ANÁLISE SETORIAL
+# TELA - ANÁLISE SETORIAL (ESCALAS CORRIGIDAS)
 # ==============================
 elif modo_analise == "🏭 Análise Setorial":
     st.header(f"🏭 Análise Setorial - {setor_selecionado}")
@@ -1631,7 +2166,8 @@ formulas = {
     "Valuation Lucro Econômico/SELIC": "Lucro Econômico ÷ (SELIC/100)",
     "Percentual Capital Terceiros": "(Passivo Circulante + Não Circulante) ÷ Total Passivo",
     "Percentual Capital Próprio": "Patrimônio Líquido ÷ Total Passivo",
-    "Caixa Líquido Atividades Operacionais": "Fluxo de caixa gerado/consumido pelas atividades operacionais"
+    "Caixa Líquido Atividades Operacionais": "Fluxo de caixa gerado/consumido pelas atividades operacionais",
+    "Dividend Yield": "(Dividendo por Ação ÷ Cotação) × 100"
 }
 
 # Exibir fórmulas em colunas
@@ -1693,6 +2229,8 @@ with st.sidebar.expander("💡 Metodologia livro Vellani (2024)"):
     - **FLUXO DE CAIXA OPERACIONAL:** Adicionada análise do Caixa Líquido de Atividades Operacionais
     - **COMPARAÇÃO:** Caixa Operacional vs Lucro Líquido para análise de qualidade do lucro
     - **EVOLUÇÃO TEMPORAL:** Gráficos de fluxo de caixa na análise histórica
+    - **DIVIDENDOS:** Histórico completo de dividendos com análise de yield
+    - **PROJEÇÕES:** Estimativas de dividendos futuros baseadas no histórico
 
     **Dataset: dff_2010_2024**
     - Período: 2010-2024 (15 anos)
