@@ -40,7 +40,7 @@ def carregar_dados_acoes_completo():
         
         if os.path.exists(excel_path):
             # Carregar dados de dividendos
-            df_dividendos = pd.read_excel(excel_path, sheet_name='dividendos')
+            df_dividendos = pd.read_excel(excel_path, sheet_name='Dividendos_Historicos')
             df_dividendos['Data'] = pd.to_datetime(df_dividendos['Data'])
             
             # Carregar dados de cotações
@@ -2659,3 +2659,4 @@ with st.sidebar.expander("💡 Metodologia livro Vellani (2024)"):
     - Tickers únicos: 266 (dividendos), 293 (cotações)
     - Dados completos de empresas como PETR4, VALE3, ITUB4, etc.
     """)
+
