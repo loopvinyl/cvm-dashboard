@@ -1,5 +1,5 @@
 # ==============================================================
-# 📊 DASHBOARD CVM - Indicadores Financeiros (VERSÃO COMPLETA COM DADOS LOCAIS)
+# 📊 DASHBOARD CVM - Indicadores Financeiros (VERSÃO COMPLETA COM ANÁLISES AVANÇADAS)
 # ==============================================================
 import streamlit as st
 import pandas as pd
@@ -26,39 +26,6 @@ def configurar_locale_brasil():
             pass
 
 configurar_locale_brasil()
-
-# ==============================
-# SISTEMA PRINCIPAL - CARREGAR DADOS DO EXCEL COMPLETO
-# ==============================
-@st.cache_data(ttl=86400)  # Cache por 24 horas
-def carregar_dados_acoes_completo():
-    """
-    Carrega dados completos de ações do arquivo Excel
-    """
-    try:
-        excel_path = "historico_acoes_completo.xlsx"
-        
-        if os.path.exists(excel_path):
-            # Carregar dados de dividendos
-            df_dividendos = pd.read_excel(excel_path, sheet_name='Dividendos_Historicos')
-            df_dividendos['Data'] = pd.to_datetime(df_dividendos['Data'])
-            
-            # Carregar dados de cotações
-            df_cotacoes = pd.read_excel(excel_path, sheet_name='cotacoes')
-            df_cotacoes['Data'] = pd.to_datetime(df_cotacoes['Data'])
-            
-            return {
-                'dividendos': df_dividendos,
-                'cotacoes': df_cotacoes
-            }
-        else:
-            return None
-    except Exception as e:
-        st.error(f"❌ Erro ao carregar arquivo Excel: {str(e)}")
-        return None
-
-# Carregar dados uma vez no início
-DADOS_ACOES = carregar_dados_acoes_completo()
 
 # ==============================
 # FUNÇÕES DE FORMATAÇÃO COM ESCALAS CORRIGIDAS
@@ -141,30 +108,40 @@ def formatar_dataframe_percentual(df, colunas):
     return df_formatado
 
 # ==============================
-# FUNÇÕES DE DIVIDENDOS E INVESTIMENTO (USANDO EXCEL)
+# FUNÇÕES DE DIVIDENDOS E INVESTIMENTO (CORRIGIDAS)
 # ==============================
 def buscar_dividendos_historicos(ticker):
     """
-    Busca dividendos históricos usando o arquivo Excel
+    Busca dividendos históricos usando yfinance ATÉ A DATA ATUAL
     """
     try:
-        if DADOS_ACOES is None:
+        # Adiciona .SA para ações brasileiras
+        ticker_yf = f"{ticker}.SA"
+        acao = yf.Ticker(ticker_yf)
+        
+        # Busca dividendos históricos ATÉ HOJE
+        dividendos = acao.dividends
+        
+        if dividendos.empty:
             return None
             
-        df_dividendos = DADOS_ACOES['dividendos']
+        # Converter para DataFrame e formatar
+        df_dividendos = dividendos.reset_index()
+        df_dividendos.columns = ['Data', 'Dividendo']
         
-        # Filtrar dividendos do ticker específico
-        dividendos_ticker = df_dividendos[df_dividendos['Ticker'] == ticker].copy()
+        # CORREÇÃO: Remover timezone para compatibilidade
+        df_dividendos['Data'] = df_dividendos['Data'].dt.tz_localize(None)
         
-        if dividendos_ticker.empty:
-            return None
-            
+        # CORREÇÃO: Filtrar apenas a partir de 2010
+        df_dividendos = df_dividendos[df_dividendos['Data'] >= datetime(2010, 1, 1)]
+        
+        df_dividendos['Ano'] = df_dividendos['Data'].dt.year
+        df_dividendos['Mes'] = df_dividendos['Data'].dt.month
+        
         # Ordenar por data
-        dividendos_ticker = dividendos_ticker.sort_values('Data')
-        dividendos_ticker['Ano'] = dividendos_ticker['Data'].dt.year
-        dividendos_ticker['Mes'] = dividendos_ticker['Data'].dt.month
+        df_dividendos = df_dividendos.sort_values('Data')
         
-        return dividendos_ticker
+        return df_dividendos
         
     except Exception as e:
         st.warning(f"⚠️ Não foi possível buscar dividendos para {ticker}: {str(e)}")
@@ -172,7 +149,7 @@ def buscar_dividendos_historicos(ticker):
 
 def calcular_estatisticas_dividendos(df_dividendos):
     """
-    Calcula estatísticas dos dividendos a partir do Excel
+    Calcula estatísticas dos dividendos
     """
     if df_dividendos is None or df_dividendos.empty:
         return None
@@ -191,43 +168,20 @@ def calcular_estatisticas_dividendos(df_dividendos):
 
 def buscar_historico_precos(ticker, periodo_maximo="max"):
     """
-    Busca histórico de preços usando o arquivo Excel
-    CORREÇÃO: Compatibilidade de datas e nomenclatura de colunas
+    Busca histórico de preços de uma ação
     """
     try:
-        if DADOS_ACOES is None:
+        ticker_yf = f"{ticker}.SA"
+        acao = yf.Ticker(ticker_yf)
+        historico = acao.history(period=periodo_maximo)
+        
+        if historico.empty:
             return None
-            
-        df_cotacoes = DADOS_ACOES['cotacoes']
         
-        # Filtrar cotações do ticker específico
-        cotacoes_ticker = df_cotacoes[df_cotacoes['Ticker'] == ticker].copy()
+        # CORREÇÃO: Remover timezone para compatibilidade
+        historico.index = historico.index.tz_localize(None)
         
-        if cotacoes_ticker.empty:
-            return None
-            
-        # Configurar índice de data CORRETAMENTE
-        cotacoes_ticker = cotacoes_ticker.set_index('Data')
-        cotacoes_ticker = cotacoes_ticker.sort_index()
-        
-        # CORREÇÃO: Padronizar nome da coluna para 'Close'
-        if 'Fechamento' in cotacoes_ticker.columns:
-            cotacoes_ticker = cotacoes_ticker.rename(columns={'Fechamento': 'Close'})
-        elif 'Close' not in cotacoes_ticker.columns:
-            # Tentar encontrar a coluna de preço
-            colunas_preco = [col for col in cotacoes_ticker.columns if col.lower() in ['close', 'fechamento', 'preco', 'preço']]
-            if colunas_preco:
-                cotacoes_ticker = cotacoes_ticker.rename(columns={colunas_preco[0]: 'Close'})
-            else:
-                # Usar primeira coluna numérica
-                colunas_numericas = cotacoes_ticker.select_dtypes(include=[np.number]).columns
-                if len(colunas_numericas) > 0:
-                    cotacoes_ticker = cotacoes_ticker.rename(columns={colunas_numericas[0]: 'Close'})
-                else:
-                    return None
-        
-        return cotacoes_ticker[['Close']]  # Retornar apenas a coluna Close
-        
+        return historico
     except Exception as e:
         st.warning(f"⚠️ Não foi possível buscar histórico de preços para {ticker}: {str(e)}")
         return None
@@ -235,35 +189,31 @@ def buscar_historico_precos(ticker, periodo_maximo="max"):
 def simular_investimento_lotes(ticker, data_inicio, quantidade_acoes=100):
     """
     Simula um investimento por quantidade de ações (lotes)
-    CORREÇÃO COMPLETA: Compatibilidade de datas entre Excel e datetime
+    CORRIGIDA: compatibilidade de timezone
     """
     try:
-        # Buscar histórico de preços do Excel
+        # Buscar histórico de preços
         historico = buscar_historico_precos(ticker, "max")
         if historico is None:
-            st.warning(f"❌ Não há dados de preços para {ticker}")
             return None
         
-        # Buscar dividendos do Excel
+        # Buscar dividendos
         dividendos = buscar_dividendos_historicos(ticker)
         
-        # CORREÇÃO CRÍTICA: Converter data_inicio para o mesmo tipo que o índice
+        # Converter data_inicio para datetime (sem timezone)
         if isinstance(data_inicio, str):
-            data_inicio = pd.to_datetime(data_inicio)
-        elif isinstance(data_inicio, datetime):
-            data_inicio = pd.to_datetime(data_inicio)
-        
-        # CORREÇÃO: Garantir que o índice seja datetime
-        historico.index = pd.to_datetime(historico.index)
+            data_inicio = datetime.strptime(data_inicio, '%Y-%m-%d')
         
         # Encontrar o primeiro preço disponível após a data de início
         precos_apos_inicio = historico[historico.index >= data_inicio]
         if precos_apos_inicio.empty:
-            st.warning(f"❌ Não há dados de preços para {ticker} após {data_inicio.strftime('%d/%m/%Y')}")
             return None
         
         primeira_data = precos_apos_inicio.index[0]
         preco_compra = precos_apos_inicio['Close'].iloc[0]
+        
+        # Calcular valor investido baseado na quantidade de ações
+        valor_investido = quantidade_acoes * preco_compra
         
         # Preço atual (último preço disponível)
         preco_atual = historico['Close'].iloc[-1]
@@ -271,26 +221,18 @@ def simular_investimento_lotes(ticker, data_inicio, quantidade_acoes=100):
         # Calcular dividendos recebidos desde a data de compra
         total_dividendos_recebidos = 0
         if dividendos is not None and not dividendos.empty:
-            # CORREÇÃO: Garantir compatibilidade de dates
-            dividendos['Data'] = pd.to_datetime(dividendos['Data'])
             dividendos_apos_compra = dividendos[dividendos['Data'] >= primeira_data]
             total_dividendos_recebidos = (dividendos_apos_compra['Dividendo'] * quantidade_acoes).sum()
         
         # Calcular valores atuais
-        valor_investido = quantidade_acoes * preco_compra
         valor_investido_atual = quantidade_acoes * preco_atual
         ganho_preco = valor_investido_atual - valor_investido
         ganho_total = ganho_preco + total_dividendos_recebidos
         
         # Calcular percentuais
-        if valor_investido > 0:
-            rentabilidade_dividendos_percentual = (total_dividendos_recebidos / valor_investido) * 100
-            rentabilidade_preco_percentual = (ganho_preco / valor_investido) * 100
-            rentabilidade_total_percentual = (ganho_total / valor_investido) * 100
-        else:
-            rentabilidade_dividendos_percentual = 0
-            rentabilidade_preco_percentual = 0
-            rentabilidade_total_percentual = 0
+        rentabilidade_dividendos_percentual = (total_dividendos_recebidos / valor_investido) * 100
+        rentabilidade_preco_percentual = (ganho_preco / valor_investido) * 100
+        rentabilidade_total_percentual = (ganho_total / valor_investido) * 100
         
         return {
             'data_compra': primeira_data,
@@ -308,114 +250,121 @@ def simular_investimento_lotes(ticker, data_inicio, quantidade_acoes=100):
         }
         
     except Exception as e:
-        st.error(f"❌ Erro na simulação de investimento: {str(e)}")
+        st.warning(f"⚠️ Erro na simulação de investimento: {str(e)}")
         return None
 
-def buscar_cotacao_atual(ticker):
+def calcular_dividend_yield(ticker):
     """
-    Busca a cotação atual do ticker no Excel
-    CORREÇÃO: Usar dados locais em vez de Yahoo Finance
+    Calcula o dividend yield de uma ação
     """
     try:
-        if DADOS_ACOES is None:
+        # Buscar dados da ação
+        dados_cotacao = buscar_cotacao_atual(ticker)
+        if not dados_cotacao:
             return None
             
-        df_cotacoes = DADOS_ACOES['cotacoes']
-        
-        # Filtrar cotações do ticker e pegar a mais recente
-        cotacoes_ticker = df_cotacoes[df_cotacoes['Ticker'] == ticker].copy()
-        if cotacoes_ticker.empty:
+        # Buscar dividendos dos últimos 12 meses
+        dividendos = buscar_dividendos_historicos(ticker)
+        if dividendos is None:
             return None
             
-        # Ordenar por data decrescente e pegar a mais recente
-        cotacoes_ticker = cotacoes_ticker.sort_values('Data', ascending=False)
-        ultima_cotacao = cotacoes_ticker.iloc[0]
+        # Calcular dividendos dos últimos 12 meses
+        data_limite = datetime.now() - timedelta(days=365)
+        dividendos_12m = dividendos[dividendos['Data'] >= data_limite]
         
-        # Determinar o preço (suporta múltiplos nomes de coluna)
-        if 'Fechamento' in ultima_cotacao:
-            preco = ultima_cotacao['Fechamento']
-        elif 'Close' in ultima_cotacao:
-            preco = ultima_cotacao['Close']
-        else:
-            # Buscar primeira coluna numérica
-            colunas_numericas = ultima_cotacao.select_dtypes(include=[np.number])
-            if not colunas_numericas.empty:
-                preco = colunas_numericas.iloc[0]
-            else:
-                return None
+        if dividendos_12m.empty:
+            return None
+            
+        total_dividendos_12m = dividendos_12m['Dividendo'].sum()
+        cotacao_atual = dados_cotacao['cotacao']
         
-        # Buscar informações básicas do dataset CVM para setor
-        setor = "N/A"
-        try:
-            # Tentar encontrar o setor no dataset principal
-            if 'df' in globals():
-                empresa_info = df[df['Ticker'] == ticker]
-                if not empresa_info.empty:
-                    setor = empresa_info['SETOR_ATIV'].iloc[0]
-        except:
-            pass
+        # Calcular dividend yield
+        dividend_yield = (total_dividendos_12m / cotacao_atual) * 100
         
-        return {
-            'cotacao': preco,
-            'moeda': 'BRL',
-            'nome': ticker,
-            'setor': setor,
-            'industria': 'N/A',
-            'market_cap': None,
-            'volume': None,
-            'data_atualizacao': ultima_cotacao['Data'].strftime("%d/%m/%Y")
-        }
+        return dividend_yield
         
     except Exception as e:
-        st.warning(f"⚠️ Não foi possível buscar cotação para {ticker}: {str(e)}")
         return None
 
-def calcular_dividend_yield_otimizado(ticker, periodo_anos=1):
+# ==============================
+# NOVO: SISTEMA DE CACHE DE DIVIDENDOS
+# ==============================
+@st.cache_data(ttl=86400)  # Cache por 24 horas
+def carregar_dados_dividendos_cache():
     """
-    Versão otimizada do cálculo de dividend yield usando Excel
+    Carrega dados de dividendos de um arquivo CSV pré-processado
+    ou busca via Yahoo Finance com fallback
     """
     try:
-        # Buscar cotação atual do Excel
+        # Tentar carregar arquivo local primeiro
+        dividendos_paths = [
+            "dividendos_historico.csv",
+            "./data/dividendos_historico.csv",
+            "/content/dividendos_historico.csv"
+        ]
+        
+        for path in dividendos_paths:
+            if os.path.exists(path):
+                df_dividendos = pd.read_csv(path)
+                df_dividendos['Data'] = pd.to_datetime(df_dividendos['Data'])
+                return df_dividendos
+                
+        # Se não encontrou arquivo, retornar None
+        return None
+    except:
+        return None
+
+def calcular_dividend_yield_otimizado(ticker, df_dividendos_cache=None, periodo_anos=1):
+    """
+    Versão otimizada do cálculo de dividend yield
+    """
+    try:
+        # Buscar cotação atual
         dados_cotacao = buscar_cotacao_atual(ticker)
         if not dados_cotacao:
             return None
             
         cotacao_atual = dados_cotacao['cotacao']
         
-        # Buscar dividendos do Excel
-        dividendos = buscar_dividendos_historicos(ticker)
-        if dividendos is None or dividendos.empty:
-            return None
+        # Tentar usar cache primeiro
+        if df_dividendos_cache is not None:
+            dividendos_ticker = df_dividendos_cache[df_dividendos_cache['Ticker'] == ticker]
+            if not dividendos_ticker.empty:
+                # Calcular dividendos dos últimos N anos
+                data_limite = datetime.now() - timedelta(days=365 * periodo_anos)
+                dividendos_periodo = dividendos_ticker[dividendos_ticker['Data'] >= data_limite]
+                
+                if not dividendos_periodo.empty:
+                    total_dividendos = dividendos_periodo['Dividendo'].sum()
+                    dividend_yield = (total_dividendos / cotacao_atual) * 100
+                    return dividend_yield
         
-        # Calcular dividendos dos últimos N anos
-        data_limite = datetime.now() - timedelta(days=365 * periodo_anos)
-        dividendos_periodo = dividendos[dividendos['Data'] >= data_limite]
-        
-        if not dividendos_periodo.empty:
-            total_dividendos = dividendos_periodo['Dividendo'].sum()
-            if cotacao_atual > 0:
-                dividend_yield = (total_dividendos / cotacao_atual) * 100
-                return dividend_yield
-        
-        return None
+        # Fallback: buscar via Yahoo Finance
+        return calcular_dividend_yield(ticker)
         
     except Exception as e:
         return None
 
+# ==============================
+# NOVO: SISTEMA DE RANKING DE DIVIDENDOS FLEXÍVEL
+# ==============================
 def calcular_ranking_dividendos(df_filtrado, periodo_anos=1, limite_empresas=50):
     """
-    Calcula ranking de dividendos com diferentes períodos usando Excel
+    Calcula ranking de dividendos com diferentes períodos
     """
+    # Carregar cache de dividendos
+    df_dividendos_cache = carregar_dados_dividendos_cache()
+    
     tickers_unicos = df_filtrado['Ticker'].unique()
     tickers_analisar = tickers_unicos[:limite_empresas]
     
     dados_dy = []
     
-    with st.spinner(f"📊 Calculando dividend yields (últimos {periodo_anos} anos)..."):
+    with st.spinner(f"Calculando dividend yields (últimos {periodo_anos} anos)..."):
         progress_bar = st.progress(0)
         for i, ticker in enumerate(tickers_analisar):
             try:
-                dy = calcular_dividend_yield_otimizado(ticker, periodo_anos)
+                dy = calcular_dividend_yield_otimizado(ticker, df_dividendos_cache, periodo_anos)
                 if dy is not None and dy > 0:
                     dados_cotacao = buscar_cotacao_atual(ticker)
                     if dados_cotacao:
@@ -440,17 +389,28 @@ st.set_page_config(page_title="Dashboard CVM - Indicadores", layout="wide")
 st.title("Dashboard CVM : Análise das Demonstrações Financeiras")
 
 # ==============================
-# LEITURA DE DADOS CVM
+# LEITURA DE DADOS
 # ==============================
 @st.cache_data
 def load_data():
-    # ✅ APENAS na mesma pasta do app
-    data_path = "dff_2010_2024.xlsx"
-    
-    if not os.path.exists(data_path):
+    # Procurar automaticamente o arquivo em locais possíveis
+    possible_paths = [
+        "/content/dff_2010_2024.xlsx",   # Google Colab
+        "dff_2010_2024.xlsx",            # mesma pasta do app
+        "./data/dff_2010_2024.xlsx"      # subpasta data/
+    ]
+    data_path = None
+    for path in possible_paths:
+        if os.path.exists(path):
+            data_path = path
+            break
+
+    if data_path is None:
         st.error(
-            "❌ Arquivo 'dff_2010_2024.xlsx' não encontrado na mesma pasta do app.\n\n"
-            "Por favor, certifique-se de que o arquivo está no mesmo diretório que app.py"
+            "❌ Arquivo 'dff_2010_2024.xlsx' não encontrado.\n\n"
+            "Coloque o arquivo na mesma pasta do app ou em /content/ (se estiver no Colab),\n"
+            "ou salve em ./data/dff_2010_2024.xlsx.\n\n"
+            "Caminhos verificados:\n- " + "\n- ".join(possible_paths)
         )
         st.stop()
 
@@ -499,7 +459,7 @@ def load_data():
     df["Investimento Médio"] = (df["Investimento Atual"] + df["Investimento Anterior"]) / 2
 
     # =============================================================
-    # INDICADORES DE RENTABILIDADE - CORRIGIDOS
+    # INDICADORES DE RENTABILIDATE - CORRIGIDOS
     # =============================================================
     
     # ROA = Resultado Antes do Resultado Financeiro e dos Tributos / Ativo Médio
@@ -674,6 +634,33 @@ def calcular_valuation_lucro_economico_selic(lucro_economico, selic_percentual=1
         return valor_empresa
     return None
 
+def buscar_cotacao_atual(ticker):
+    """
+    Busca a cotação atual do ticker no Yahoo Finance
+    """
+    try:
+        # Adiciona .SA para ações brasileiras
+        ticker_yf = f"{ticker}.SA"
+        acao = yf.Ticker(ticker_yf)
+        info = acao.info
+        
+        cotacao = info.get('regularMarketPrice') or info.get('currentPrice')
+        if cotacao:
+            return {
+                'cotacao': cotacao,
+                'moeda': info.get('currency', 'BRL'),
+                'nome': info.get('longName', ticker),
+                'setor': info.get('sector', 'N/A'),
+                'industria': info.get('industry', 'N/A'),
+                'market_cap': info.get('marketCap'),
+                'volume': info.get('volume'),
+                'data_atualizacao': datetime.now().strftime("%d/%m/%Y %H:%M")
+            }
+    except Exception as e:
+        st.warning(f"⚠️ Não foi possível buscar cotação para {ticker}: {str(e)}")
+    
+    return None
+
 def criar_grafico_comparativo(preco_calculado, cotacao_atual, ticker):
     """
     Cria gráfico bullet chart comparativo entre preço calculado e cotação atual
@@ -724,12 +711,6 @@ df = load_data()
 # SIDEBAR - FILTROS PRINCIPAIS
 # ==============================
 st.sidebar.header("🔧 Filtros Principais")
-
-# Exibir status dos dados
-if DADOS_ACOES is not None:
-    st.sidebar.success("✅ Dados de ações carregados do Excel")
-else:
-    st.sidebar.warning("⚠️ Dados de ações não encontrados")
 
 # Seleção de modo de análise
 modo_analise = st.sidebar.radio(
@@ -947,101 +928,96 @@ if modo_analise == "🏆 Dados Gerais":
     with rank_tab5:
         st.header("💰 Top Pagadores de Dividendos")
         
-        if DADOS_ACOES is None:
-            st.error("""
-            **❌ Arquivo de dados de ações não encontrado**
+        # Controles para seleção de período
+        col_periodo, col_lote = st.columns(2)
+        
+        with col_periodo:
+            periodo_selecionado = st.selectbox(
+                "Período de análise:",
+                [1, 2, 3, 5, 10],
+                index=0,
+                format_func=lambda x: f"Últimos {x} anos"
+            )
+        
+        with col_lote:
+            limite_empresas = st.selectbox(
+                "Número de empresas:",
+                [30, 50, 100],
+                index=0,
+                format_func=lambda x: f"Top {x} empresas"
+            )
+        
+        # Calcular ranking
+        dados_dy = calcular_ranking_dividendos(df_filtrado, periodo_selecionado, limite_empresas)
+        
+        if dados_dy:
+            # Criar DataFrame e ordenar
+            df_dy = pd.DataFrame(dados_dy)
+            df_dy = df_dy.nlargest(10, 'Dividend Yield')
             
-            Para usar esta funcionalidade, você precisa do arquivo:
-            **`historico_acoes_completo.xlsx`**
+            # Gráfico
+            fig_dy = px.bar(
+                df_dy, 
+                x='Ticker', 
+                y='Dividend Yield',
+                color='Setor',
+                title=f'Top 10 Empresas por Dividend Yield (Últimos {periodo_selecionado} anos)'
+            )
+            fig_dy.update_layout(
+                yaxis_title='Dividend Yield (%)',
+                yaxis_tickformat=',.2f',
+                height=500
+            )
+            st.plotly_chart(fig_dy, use_container_width=True)
             
-            Este arquivo deve conter:
-            - Planilha 'dividendos' com colunas: Ticker, Data, Dividendo
-            - Planilha 'cotacoes' com colunas: Ticker, Data, Fechamento/Close
+            # Tabela detalhada
+            st.subheader("📊 Detalhamento do Ranking")
             
-            **📊 Dados Disponíveis no Arquivo:**
-            - 8,468 registros de dividendos históricos
-            - 266 tickers únicos com dados de dividendos  
-            - Período completo de 2000 a 2025
-            - Dados de empresas como PETR4, VALE3, ITUB4, etc.
+            df_dy_display = df_dy.copy()
+            df_dy_display['Dividend Yield'] = df_dy_display['Dividend Yield'].apply(lambda x: f"{x:.2f}%")
+            df_dy_display['Cotação'] = df_dy_display['Cotação'].apply(
+                lambda x: f"R$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            )
+            
+            st.dataframe(
+                df_dy_display[['Ticker', 'Dividend Yield', 'Cotação', 'Setor']],
+                use_container_width=True
+            )
+            
+            # Análise
+            st.subheader("💡 Análise dos Dividend Yields")
+            
+            dy_medio = df_dy['Dividend Yield'].mean()
+            dy_maximo = df_dy['Dividend Yield'].max()
+            dy_minimo = df_dy['Dividend Yield'].min()
+            
+            col1, col2, col3 = st.columns(3)
+            with col1: st.metric("Dividend Yield Médio", f"{dy_medio:.2f}%")
+            with col2: st.metric("Maior Dividend Yield", f"{dy_maximo:.2f}%")
+            with col3: st.metric("Menor Dividend Yield", f"{dy_minimo:.2f}%")
+            
+            st.info("""
+            **📈 Interpretação:**
+            - **Acima de 8%:** Yield muito alto - pode indicar oportunidades ou riscos
+            - **Entre 4%-8%:** Yield atrativo - bom para renda
+            - **Abaixo de 4%:** Yield moderado - empresas em crescimento
             """)
+            
         else:
-            # Controles para seleção de período
-            col_periodo, col_lote = st.columns(2)
+            st.warning("""
+            **📝 Como obter dados de dividendos:**
             
-            with col_periodo:
-                periodo_selecionado = st.selectbox(
-                    "Período de análise:",
-                    [1, 2, 3, 5, 10],
-                    index=0,
-                    format_func=lambda x: f"Últimos {x} anos"
-                )
+            1. **Solução Imediata:** Aguarde alguns segundos e recarregue a página
+            2. **Solução Permanente:** Baixe o arquivo de dividendos históricos:
             
-            with col_lote:
-                limite_empresas = st.selectbox(
-                    "Número de empresas:",
-                    [30, 50, 100],
-                    index=0,
-                    format_func=lambda x: f"Top {x} empresas"
-                )
+            ```python
+            # Arquivo CSV esperado: dividendos_historico.csv
+            # Colunas: Ticker,Data,Dividendo
+            # Exemplo: PETR4,2024-01-15,2.50
+            ```
             
-            # Calcular ranking
-            dados_dy = calcular_ranking_dividendos(df_filtrado, periodo_selecionado, limite_empresas)
-            
-            if dados_dy:
-                # Criar DataFrame e ordenar
-                df_dy = pd.DataFrame(dados_dy)
-                df_dy = df_dy.nlargest(10, 'Dividend Yield')
-                
-                # Gráfico
-                fig_dy = px.bar(
-                    df_dy, 
-                    x='Ticker', 
-                    y='Dividend Yield',
-                    color='Setor',
-                    title=f'Top 10 Empresas por Dividend Yield (Últimos {periodo_selecionado} anos)'
-                )
-                fig_dy.update_layout(
-                    yaxis_title='Dividend Yield (%)',
-                    yaxis_tickformat=',.2f',
-                    height=500
-                )
-                st.plotly_chart(fig_dy, use_container_width=True)
-                
-                # Tabela detalhada
-                st.subheader("📊 Detalhamento do Ranking")
-                
-                df_dy_display = df_dy.copy()
-                df_dy_display['Dividend Yield'] = df_dy_display['Dividend Yield'].apply(lambda x: f"{x:.2f}%")
-                df_dy_display['Cotação'] = df_dy_display['Cotação'].apply(
-                    lambda x: f"R$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                )
-                
-                st.dataframe(
-                    df_dy_display[['Ticker', 'Dividend Yield', 'Cotação', 'Setor']],
-                    use_container_width=True
-                )
-                
-                # Análise
-                st.subheader("💡 Análise dos Dividend Yields")
-                
-                dy_medio = df_dy['Dividend Yield'].mean()
-                dy_maximo = df_dy['Dividend Yield'].max()
-                dy_minimo = df_dy['Dividend Yield'].min()
-                
-                col1, col2, col3 = st.columns(3)
-                with col1: st.metric("Dividend Yield Médio", f"{dy_medio:.2f}%")
-                with col2: st.metric("Maior Dividend Yield", f"{dy_maximo:.2f}%")
-                with col3: st.metric("Menor Dividend Yield", f"{dy_minimo:.2f}%")
-                
-                st.info("""
-                **📈 Interpretação:**
-                - **Acima de 8%:** Yield muito alto - pode indicar oportunidades ou riscos
-                - **Entre 4%-8%:** Yield atrativo - bom para renda
-                - **Abaixo de 4%:** Yield moderado - empresas em crescimento
-                """)
-                
-            else:
-                st.warning("Não foi possível calcular os dividend yields. Verifique se os dados estão disponíveis para as empresas selecionadas.")
+            [📥 Download do modelo de arquivo](https://exemplo.com/dividendos_modelo.csv)
+            """)
 
 # ==============================
 # TELA - VISÃO POR EMPRESA (ESCALAS CORRIGIDAS)
@@ -1998,7 +1974,7 @@ elif modo_analise == "📈 Visão por Empresa":
         with tab_dividendos:
             st.subheader("💰 Histórico de Dividendos")
             
-            # Buscar dividendos do Excel
+            # Buscar dividendos ATÉ A DATA ATUAL
             with st.spinner("Buscando dados de dividendos..."):
                 df_dividendos = buscar_dividendos_historicos(ticker_selecionado)
             
@@ -2157,7 +2133,7 @@ elif modo_analise == "📈 Visão por Empresa":
                 Possíveis razões:
                 - A empresa não distribui dividendos regularmente
                 - O ticker pode estar com formato diferente
-                - Dados não disponíveis no arquivo Excel
+                - Limitações temporárias na API do Yahoo Finance
                 - A empresa pode ser recente no mercado
                 """)
         
@@ -2332,7 +2308,7 @@ elif modo_analise == "📈 Visão por Empresa":
                     Possíveis razões:
                     - Dados históricos insuficientes para o período selecionado
                     - Ticker não encontrado ou sem dados de preços
-                    - Erro nos dados do arquivo Excel
+                    - Erro na conexão com a API do Yahoo Finance
                     
                     Tente selecionar uma data mais recente ou verificar o ticker.
                     """)
@@ -2634,16 +2610,15 @@ with st.sidebar.expander("💡 Metodologia livro Vellani (2024)"):
     - **FÓRMULA CORRETA:** Valor da Empresa = Lucro Econômico ÷ (SELIC/100)
     - **CONVERSÃO:** Valor em R$ mil convertido para R$ normais (×1000)
     - **COTAÇÃO ESPERADA:** Valor da Empresa (R$) ÷ Número de Ações
-    - **COTAÇÃO:** Busca em tempo real via arquivo Excel
+    - **COTAÇÃO:** Busca em tempo real via Yahoo Finance
     - **ANÁLISE:** Comparação entre valuation calculado e cotação de mercado
 
     **Novas Funcionalidades:**
-    - **DADOS LOCAIS:** Usa arquivo Excel com 8.468 dividendos e 911.007 cotações
     - **FLUXO DE CAIXA OPERACIONAL:** Adicionada análise do Caixa Líquido de Atividades Operacionais
     - **COMPARAÇÃO:** Caixa Operacional vs Lucro Líquido para análise de qualidade do lucro
     - **EVOLUÇÃO TEMPORAL:** Gráficos de fluxo de caixa na análise histórica
     - **DIVIDENDOS:** Histórico de dividendos e análise de dividend yield
-    - **SIMULAÇÃO DE INVESTIMENTO:** Simulação de compra de lotes desde data específica
+    - **SIMULAÇÃO DE INVESTIMENTO:** Simulação de R$ 1.000,00 desde data específica
 
     **Dataset: dff_2010_2024**
     - Período: 2010-2024 (15 anos)
@@ -2652,11 +2627,4 @@ with st.sidebar.expander("💡 Metodologia livro Vellani (2024)"):
     - Setores: 43 categorias
     - **ESCALA DOS VALORES NO DATASET:** R$ mil
     - **NÚMERO DE AÇÕES:** Disponível apenas para 2024
-
-    **Dataset: historico_acoes_completo.xlsx**
-    - Dividendos: 8.468 registros (2000-2025)
-    - Cotações: 911.007 registros (2010-2025)
-    - Tickers únicos: 266 (dividendos), 293 (cotações)
-    - Dados completos de empresas como PETR4, VALE3, ITUB4, etc.
     """)
-
