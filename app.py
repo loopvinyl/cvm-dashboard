@@ -82,7 +82,8 @@ def formatar_percentual_brasil(valor, casas_decimais=2):
         return "N/A"
     
     try:
-        return f"{valor:.{casas_decimais}%}".replace(".", ",")
+        # Usa o formato local do Python com substituição de . por ,
+        return f"{valor:.{casas_decimais}f}%".replace(".", ",")
     except:
         return str(valor)
 
@@ -120,7 +121,7 @@ def buscar_dividendos_historicos(ticker):
         ticker_yf = f"{ticker}.SA"
         acao = yf.Ticker(ticker_yf)
         
-        # Busca dividendos históricos ATÉ HOJE
+        # Busca dividendos históricos ATÉ HOJE (data mais recente)
         dividendos = acao.dividends
         
         if dividendos.empty:
@@ -186,6 +187,16 @@ def buscar_historico_precos(ticker, periodo_maximo="max"):
     except Exception as e:
         st.warning(f"⚠️ Não foi possível buscar histórico de preços para {ticker}: {str(e)}")
         return None
+
+def formatar_valor_simulacao(valor, casas_decimais=2):
+    """
+    Função auxiliar para formatar valores monetários da simulação no padrão R$ X.XXX,XX
+    CORRIGIDA: Garante separador de milhar (.) e decimal (,)
+    """
+    if pd.isna(valor):
+        return "R$ -"
+    # Usa a formatação com separador de milhar (,) e depois inverte para o padrão brasileiro
+    return f"R$ {valor:,.{casas_decimais}f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 def simular_investimento_lotes(ticker, data_inicio, quantidade_acoes=100):
     """
@@ -974,7 +985,7 @@ if modo_analise == "🏆 Dados Gerais":
             # Tabela detalhada
             st.subheader("📊 Detalhamento do Ranking")
             df_dy_display = df_dy.copy()
-            df_dy_display['Dividend Yield'] = df_dy_display['Dividend Yield'].apply(lambda x: f"{x:.2f}%")
+            df_dy_display['Dividend Yield'] = df_dy_display['Dividend Yield'].apply(lambda x: f"{x:.2f}%".replace(".", ","))
             df_dy_display['Cotação'] = df_dy_display['Cotação'].apply(
                 lambda x: f"R$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             )
@@ -991,11 +1002,11 @@ if modo_analise == "🏆 Dados Gerais":
             
             col1, col2, col3 = st.columns(3)
             with col1:
-                st.metric("Dividend Yield Médio", f"{dy_medio:.2f}%")
+                st.metric("Dividend Yield Médio", f"{dy_medio:.2f}%".replace(".", ","))
             with col2:
-                st.metric("Maior Dividend Yield", f"{dy_maximo:.2f}%")
+                st.metric("Maior Dividend Yield", f"{dy_maximo:.2f}%".replace(".", ","))
             with col3:
-                st.metric("Menor Dividend Yield", f"{dy_minimo:.2f}%")
+                st.metric("Menor Dividend Yield", f"{dy_minimo:.2f}%".replace(".", ","))
             
             st.info("""
                 **📈 Interpretação:**
@@ -1254,35 +1265,48 @@ elif modo_analise == "📈 Visão por Empresa":
                 col_i1, col_i2, col_i3 = st.columns(3)
                 with col_i1:
                     st.metric("Valor Investido (Compra)", 
-                              f"R$ {resultado_simulacao['valor_investido']:,.2f}".replace(".", ","))
+                              formatar_valor_simulacao(resultado_simulacao['valor_investido']))
                 with col_i2:
                     st.metric("Valor Atual (Venda)", 
-                              f"R$ {resultado_simulacao['valor_investido_atual']:,.2f}".replace(".", ","))
+                              formatar_valor_simulacao(resultado_simulacao['valor_investido_atual']))
                 with col_i3:
                     st.metric("Dividendos Recebidos", 
-                              f"R$ {resultado_simulacao['total_dividendos_recebidos']:,.2f}".replace(".", ","))
+                              formatar_valor_simulacao(resultado_simulacao['total_dividendos_recebidos']))
 
                 st.subheader("📈 Rentabilidade")
                 col_r1, col_r2, col_r3 = st.columns(3)
                 with col_r1:
+                    # Formatação de Ganho de Capital com valor monetário e percentual (CORRIGIDA)
+                    ganho_preco_valor = formatar_valor_simulacao(resultado_simulacao['ganho_preco'])
+                    ganho_preco_percentual = formatar_percentual_brasil(resultado_simulacao['rentabilidade_preco_percentual'], 2)
                     st.metric("Ganho de Capital (Preço)", 
-                              f"R$ {resultado_simulacao['ganho_preco']:,.2f} ({resultado_simulacao['rentabilidade_preco_percentual']:,.2f}%)".replace(".", ",").replace(",", ".", 1).replace(".", ",", 1))
+                              f"{ganho_preco_valor} ({ganho_preco_percentual})")
                 with col_r2:
+                    # Formatação de Rentabilidade Div. (CORRIGIDA)
+                    rentabilidade_div_percentual = formatar_percentual_brasil(resultado_simulacao['rentabilidade_dividendos_percentual'], 2)
                     st.metric("Rentabilidade Div. (Yield on Cost)", 
-                              f"{resultado_simulacao['rentabilidade_dividendos_percentual']:,.2f}%".replace(".", ","))
+                              rentabilidade_div_percentual)
                 with col_r3:
+                    # Formatação de Ganho Total com valor monetário e percentual (CORRIGIDA)
+                    ganho_total_valor = formatar_valor_simulacao(resultado_simulacao['ganho_total'])
+                    ganho_total_percentual = formatar_percentual_brasil(resultado_simulacao['rentabilidade_total_percentual'], 2)
                     st.metric("Ganho Total", 
-                              f"R$ {resultado_simulacao['ganho_total']:,.2f} ({resultado_simulacao['rentabilidade_total_percentual']:,.2f}%)".replace(".", ",").replace(",", ".", 1).replace(".", ",", 1))
+                              f"{ganho_total_valor} ({ganho_total_percentual})")
 
 
+                # --- CORREÇÃO DE FORMATAÇÃO DO BLOCO ST.INFO ---
+                preco_compra_formatado = f"{resultado_simulacao['preco_compra']:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                preco_atual_formatado = f"{resultado_simulacao['preco_atual']:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                
                 st.info(f"""
                 **Detalhes:**
                 * **Ação:** {ticker_selecionado}
                 * **Quantidade:** {tamanho_lote} ações
                 * **Data de Compra (efetiva):** {resultado_simulacao['data_compra'].strftime('%d/%m/%Y')}
-                * **Preço de Compra:** R$ {resultado_simulacao['preco_compra']:,.2f}
-                * **Preço Atual:** R$ {resultado_simulacao['preco_atual']:,.2f}
+                * **Preço de Compra:** R$ {preco_compra_formatado}
+                * **Preço Atual:** R$ {preco_atual_formatado}
                 """)
+                # -----------------------------------------------
                 
             else:
                 st.error("""
