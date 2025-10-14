@@ -1946,7 +1946,7 @@ elif modo_analise == "📈 Visão por Empresa":
                     xaxis_title='Data',
                     height=400,
                     yaxis=dict(
-                        tickformat=".4f",  # 4 casas decimais
+                        tickformat=".0f",  # 4 casas decimais
                         separatethousands=True,
                         tickmode='auto'
                     )
