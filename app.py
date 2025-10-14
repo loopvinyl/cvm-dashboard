@@ -1174,112 +1174,111 @@ elif modo_analise == "📈 Visão por Empresa":
                                             yaxis=dict(range=[0, 100]))
                 st.plotly_chart(fig_estrutura, use_container_width=True)
 
-
-with tab_dividendos:
-    st.subheader("💰 Histórico de Dividendos")
-    
-    # Tenta buscar os dividendos (agora com cache)
-    df_dividendos = buscar_dividendos_historicos(ticker_selecionado)
-    
-    if df_dividendos is not None and not df_dividendos.empty:
-        stats = calcular_estatisticas_dividendos(df_dividendos)
-        
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Último Dividendo", f"R$ {stats['ultimo_dividendo']:,.4f}".replace(".", ","))
-        with col2:
-            st.metric("Total Pago (Período)", f"R$ {stats['total_dividendos']:,.2f}".replace(".", ","))
-        with col3:
-            st.metric("Média Anual", f"R$ {stats['media_anual']:,.2f}".replace(".", ","))
-        with col4:
-            st.metric("Frequência/Ano", f"{stats['frequencia_media']:.1f}")
-            
-        # 🆕 GRÁFICO DE LINHA DOS DIVIDENDOS AO LONGO DO TEMPO
-        st.subheader("📈 Evolução dos Dividendos ao Longo do Tempo")
-        
-        fig_dividendos_linha = px.line(
-            df_dividendos, 
-            x='Data', 
-            y='Dividendo',
-            title=f'Dividendos por Ação - {ticker_selecionado}',
-            markers=True
-        )
-        
-        # Formatação brasileira no eixo Y
-        fig_dividendos_linha.update_layout(
-            yaxis_title='Dividendo por Ação (R$)',
-            xaxis_title='Data',
-            height=400,
-            yaxis=dict(
-                tickformat=".4f",  # 4 casas decimais para dividendos
-                separatethousands=True
-            )
-        )
-        
-        st.plotly_chart(fig_dividendos_linha, use_container_width=True)
-        
-        # Gráfico de dividendos por ano (JÁ EXISTENTE)
-        dividendos_anuais = df_dividendos.groupby('Ano')['Dividendo'].sum().reset_index()
-        fig_divid = px.bar(dividendos_anuais, x='Ano', y='Dividendo', 
-                            title=f'Dividendos Totais Pagos por Ano para {ticker_selecionado}')
-        st.plotly_chart(fig_divid, use_container_width=True)
-        
-        # Tabela detalhada
-        st.subheader("📋 Pagamentos Detalhados")
-        df_dividendos_display = df_dividendos.copy()
-        df_dividendos_display['Data'] = df_dividendos_display['Data'].dt.strftime('%d/%m/%Y')
-        df_dividendos_display['Dividendo'] = df_dividendos_display['Dividendo'].apply(
-            lambda x: f"R$ {x:,.4f}".replace(".", ","))
-        st.dataframe(df_dividendos_display[['Data', 'Dividendo', 'Ano']], use_container_width=True)
-        
-        # 🆕 ANÁLISE DE DIVIDEND YIELD (se tivermos cotação)
-        st.subheader("🎯 Análise de Dividend Yield")
-        
-        # Buscar cotação atual para cálculo do yield
-        dados_cotacao = buscar_cotacao_atual(ticker_selecionado)
-        
-        if dados_cotacao and stats['ultimo_dividendo'] > 0:
-            cotacao_atual = dados_cotacao['cotacao']
-            
-            # Calcular dividend yield baseado no último dividendo
-            dy_ultimo = (stats['ultimo_dividendo'] / cotacao_atual) * 100
-            
-            # Calcular dividend yield médio anual
-            dy_medio = (stats['media_anual'] / cotacao_atual) * 100
-            
-            col_dy1, col_dy2, col_dy3 = st.columns(3)
-            
-            with col_dy1:
-                st.metric(
-                    "Dividend Yield (Último)",
-                    f"{dy_ultimo:.2f}%",
-                    help="Baseado no último dividendo e cotação atual"
-                )
-            
-            with col_dy2:
-                st.metric(
-                    "Dividend Yield (Médio)",
-                    f"{dy_medio:.2f}%",
-                    help="Baseado na média anual de dividendos"
-                )
-            
-            with col_dy3:
-                st.metric(
-                    "Cotação Atual",
-                    f"R$ {cotacao_atual:.2f}".replace(".", ",")
-                )
-            
-            # Análise qualitativa do yield
-            st.write("**💡 Análise do Dividend Yield:**")
-            if dy_ultimo > 6:
-                st.success("**✅ Yield Alto:** Acima de 6% ao ano - potencialmente atrativo para investidores de renda")
-            elif dy_ultimo > 3:
-                st.info("**🟡 Yield Moderado:** Entre 3% e 6% ao ano - dentro da média do mercado")
-            else:
-                st.warning("**🔴 Yield Baixo:** Abaixo de 3% ao ano - foco pode ser mais no crescimento que na renda")
-        
-    else:
-        st.warning(f"Não foram encontrados dados de dividendos para {ticker_selecionado} no Yahoo Finance.")
+            with tab_dividendos:
+                st.subheader("💰 Histórico de Dividendos")
+                
+                # Tenta buscar os dividendos (agora com cache)
+                df_dividendos = buscar_dividendos_historicos(ticker_selecionado)
+                
+                if df_dividendos is not None and not df_dividendos.empty:
+                    stats = calcular_estatisticas_dividendos(df_dividendos)
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("Último Dividendo", f"R$ {stats['ultimo_dividendo']:,.4f}".replace(".", ","))
+                    with col2:
+                        st.metric("Total Pago (Período)", f"R$ {stats['total_dividendos']:,.2f}".replace(".", ","))
+                    with col3:
+                        st.metric("Média Anual", f"R$ {stats['media_anual']:,.2f}".replace(".", ","))
+                    with col4:
+                        st.metric("Frequência/Ano", f"{stats['frequencia_media']:.1f}")
+                        
+                    # 🆕 GRÁFICO DE LINHA DOS DIVIDENDOS AO LONGO DO TEMPO
+                    st.subheader("📈 Evolução dos Dividendos ao Longo do Tempo")
+                    
+                    fig_dividendos_linha = px.line(
+                        df_dividendos, 
+                        x='Data', 
+                        y='Dividendo',
+                        title=f'Dividendos por Ação - {ticker_selecionado}',
+                        markers=True
+                    )
+                    
+                    # Formatação brasileira no eixo Y
+                    fig_dividendos_linha.update_layout(
+                        yaxis_title='Dividendo por Ação (R$)',
+                        xaxis_title='Data',
+                        height=400,
+                        yaxis=dict(
+                            tickformat=".4f",  # 4 casas decimais para dividendos
+                            separatethousands=True
+                        )
+                    )
+                    
+                    st.plotly_chart(fig_dividendos_linha, use_container_width=True)
+                    
+                    # Gráfico de dividendos por ano (JÁ EXISTENTE)
+                    dividendos_anuais = df_dividendos.groupby('Ano')['Dividendo'].sum().reset_index()
+                    fig_divid = px.bar(dividendos_anuais, x='Ano', y='Dividendo', 
+                                        title=f'Dividendos Totais Pagos por Ano para {ticker_selecionado}')
+                    st.plotly_chart(fig_divid, use_container_width=True)
+                    
+                    # Tabela detalhada
+                    st.subheader("📋 Pagamentos Detalhados")
+                    df_dividendos_display = df_dividendos.copy()
+                    df_dividendos_display['Data'] = df_dividendos_display['Data'].dt.strftime('%d/%m/%Y')
+                    df_dividendos_display['Dividendo'] = df_dividendos_display['Dividendo'].apply(
+                        lambda x: f"R$ {x:,.4f}".replace(".", ","))
+                    st.dataframe(df_dividendos_display[['Data', 'Dividendo', 'Ano']], use_container_width=True)
+                    
+                    # 🆕 ANÁLISE DE DIVIDEND YIELD (se tivermos cotação)
+                    st.subheader("🎯 Análise de Dividend Yield")
+                    
+                    # Buscar cotação atual para cálculo do yield
+                    dados_cotacao = buscar_cotacao_atual(ticker_selecionado)
+                    
+                    if dados_cotacao and stats['ultimo_dividendo'] > 0:
+                        cotacao_atual = dados_cotacao['cotacao']
+                        
+                        # Calcular dividend yield baseado no último dividendo
+                        dy_ultimo = (stats['ultimo_dividendo'] / cotacao_atual) * 100
+                        
+                        # Calcular dividend yield médio anual
+                        dy_medio = (stats['media_anual'] / cotacao_atual) * 100
+                        
+                        col_dy1, col_dy2, col_dy3 = st.columns(3)
+                        
+                        with col_dy1:
+                            st.metric(
+                                "Dividend Yield (Último)",
+                                f"{dy_ultimo:.2f}%",
+                                help="Baseado no último dividendo e cotação atual"
+                            )
+                        
+                        with col_dy2:
+                            st.metric(
+                                "Dividend Yield (Médio)",
+                                f"{dy_medio:.2f}%",
+                                help="Baseado na média anual de dividendos"
+                            )
+                        
+                        with col_dy3:
+                            st.metric(
+                                "Cotação Atual",
+                                f"R$ {cotacao_atual:.2f}".replace(".", ",")
+                            )
+                        
+                        # Análise qualitativa do yield
+                        st.write("**💡 Análise do Dividend Yield:**")
+                        if dy_ultimo > 6:
+                            st.success("**✅ Yield Alto:** Acima de 6% ao ano - potencialmente atrativo para investidores de renda")
+                        elif dy_ultimo > 3:
+                            st.info("**🟡 Yield Moderado:** Entre 3% e 6% ao ano - dentro da média do mercado")
+                        else:
+                            st.warning("**🔴 Yield Baixo:** Abaixo de 3% ao ano - foco pode ser mais no crescimento que na renda")
+                    
+                else:
+                    st.warning(f"Não foram encontrados dados de dividendos para {ticker_selecionado} no Yahoo Finance.")
 
 # ==============================
 # TELA - ANÁLISE SETORIAL (ESCALAS CORRIGIDAS)
