@@ -1,5 +1,5 @@
 # ==============================================================
-# 📊 DASHBOARD CVM - Indicadores Financeiros (VERSÃO COMPLETA COM DIVIDENDOS)
+# 📊 DASHBOARD CVM - Indicadores Financeiros (VERSÃO COMPLETA COM ANÁLISES AVANÇADAS)
 # ==============================================================
 import streamlit as st
 import pandas as pd
@@ -9,7 +9,7 @@ from plotly.subplots import make_subplots
 import numpy as np
 import os
 import yfinance as yf
-from datetime import datetime
+from datetime import datetime, timedelta
 import locale
 
 # ==============================
@@ -26,102 +26,6 @@ def configurar_locale_brasil():
             pass
 
 configurar_locale_brasil()
-
-# ==============================
-# FUNÇÕES DE DIVIDENDOS (NOVAS)
-# ==============================
-def buscar_dividendos_historicos(ticker):
-    """
-    Busca dividendos históricos usando yfinance
-    """
-    try:
-        # Adiciona .SA para ações brasileiras
-        ticker_yf = f"{ticker}.SA"
-        acao = yf.Ticker(ticker_yf)
-        
-        # Busca dividendos históricos
-        dividendos = acao.dividends
-        
-        if dividendos.empty:
-            return None
-            
-        # Converter para DataFrame e formatar
-        df_dividendos = dividendos.reset_index()
-        df_dividendos.columns = ['Data', 'Dividendo']
-        df_dividendos['Ano'] = df_dividendos['Data'].dt.year
-        df_dividendos['Mes'] = df_dividendos['Data'].dt.month
-        
-        return df_dividendos
-        
-    except Exception as e:
-        st.warning(f"⚠️ Não foi possível buscar dividendos para {ticker}: {str(e)}")
-        return None
-
-def calcular_estatisticas_dividendos(df_dividendos):
-    """
-    Calcula estatísticas dos dividendos
-    """
-    if df_dividendos is None or df_dividendos.empty:
-        return None
-    
-    stats = {
-        'total_dividendos': df_dividendos['Dividendo'].sum(),
-        'media_anual': df_dividendos.groupby('Ano')['Dividendo'].sum().mean(),
-        'maior_dividendo': df_dividendos['Dividendo'].max(),
-        'menor_dividendo': df_dividendos['Dividendo'].min(),
-        'frequencia_media': len(df_dividendos) / df_dividendos['Ano'].nunique(),
-        'ultimo_dividendo': df_dividendos.iloc[-1]['Dividendo'] if len(df_dividendos) > 0 else 0,
-        'data_ultimo': df_dividendos.iloc[-1]['Data'] if len(df_dividendos) > 0 else None
-    }
-    
-    return stats
-
-def prever_dividendos(df_dividendos):
-    """
-    Faz uma projeção simples de dividendos futuros baseada no histórico
-    """
-    if df_dividendos is None:
-        return None
-    
-    # Agrupar por ano e calcular média de crescimento
-    dividendos_ano = df_dividendos.groupby('Ano')['Dividendo'].sum()
-    
-    if len(dividendos_ano) < 2:
-        return None
-    
-    # Calcular crescimento médio
-    crescimento = dividendos_ano.pct_change().mean()
-    
-    # Projeção para próximo ano
-    ultimo_ano = dividendos_ano.iloc[-1]
-    projecao = ultimo_ano * (1 + crescimento) if not pd.isna(crescimento) else ultimo_ano
-    
-    return {
-        'crescimento_medio': crescimento,
-        'ultimo_ano': ultimo_ano,
-        'projecao_proximo_ano': projecao,
-        'confiabilidade': 'Alta' if len(dividendos_ano) >= 3 else 'Média'
-    }
-
-def comparar_dividendos_empresas(tickers):
-    """
-    Compara dividendos de múltiplas empresas
-    """
-    dados_comparacao = []
-    
-    for ticker in tickers:
-        df_div = buscar_dividendos_historicos(ticker)
-        if df_div is not None and not df_div.empty:
-            stats = calcular_estatisticas_dividendos(df_div)
-            dados_comparacao.append({
-                'Ticker': ticker,
-                'Último Dividendo': stats['ultimo_dividendo'],
-                'Média Anual': stats['media_anual'],
-                'Total Histórico': stats['total_dividendos'],
-                'Frequência/Ano': stats['frequencia_media']
-            })
-    
-    return pd.DataFrame(dados_comparacao)
 
 # ==============================
 # FUNÇÕES DE FORMATAÇÃO COM ESCALAS CORRIGIDAS
@@ -202,6 +106,170 @@ def formatar_dataframe_percentual(df, colunas):
                 lambda x: formatar_percentual_brasil(x, 2) if pd.notna(x) else "N/A"
             )
     return df_formatado
+
+# ==============================
+# FUNÇÕES DE DIVIDENDOS E INVESTIMENTO
+# ==============================
+def buscar_dividendos_historicos(ticker):
+    """
+    Busca dividendos históricos usando yfinance
+    """
+    try:
+        # Adiciona .SA para ações brasileiras
+        ticker_yf = f"{ticker}.SA"
+        acao = yf.Ticker(ticker_yf)
+        
+        # Busca dividendos históricos
+        dividendos = acao.dividends
+        
+        if dividendos.empty:
+            return None
+            
+        # Converter para DataFrame e formatar
+        df_dividendos = dividendos.reset_index()
+        df_dividendos.columns = ['Data', 'Dividendo']
+        df_dividendos['Ano'] = df_dividendos['Data'].dt.year
+        df_dividendos['Mes'] = df_dividendos['Data'].dt.month
+        
+        return df_dividendos
+        
+    except Exception as e:
+        st.warning(f"⚠️ Não foi possível buscar dividendos para {ticker}: {str(e)}")
+        return None
+
+def calcular_estatisticas_dividendos(df_dividendos):
+    """
+    Calcula estatísticas dos dividendos
+    """
+    if df_dividendos is None or df_dividendos.empty:
+        return None
+    
+    stats = {
+        'total_dividendos': df_dividendos['Dividendo'].sum(),
+        'media_anual': df_dividendos.groupby('Ano')['Dividendo'].sum().mean(),
+        'maior_dividendo': df_dividendos['Dividendo'].max(),
+        'menor_dividendo': df_dividendos['Dividendo'].min(),
+        'frequencia_media': len(df_dividendos) / df_dividendos['Ano'].nunique(),
+        'ultimo_dividendo': df_dividendos.iloc[-1]['Dividendo'] if len(df_dividendos) > 0 else 0,
+        'data_ultimo': df_dividendos.iloc[-1]['Data'] if len(df_dividendos) > 0 else None
+    }
+    
+    return stats
+
+def buscar_historico_precos(ticker, periodo_maximo="max"):
+    """
+    Busca histórico de preços de uma ação
+    """
+    try:
+        ticker_yf = f"{ticker}.SA"
+        acao = yf.Ticker(ticker_yf)
+        historico = acao.history(period=periodo_maximo)
+        
+        if historico.empty:
+            return None
+            
+        return historico
+    except Exception as e:
+        st.warning(f"⚠️ Não foi possível buscar histórico de preços para {ticker}: {str(e)}")
+        return None
+
+def simular_investimento(ticker, data_inicio, valor_investido=1000):
+    """
+    Simula um investimento de R$ 1.000,00 a partir de uma data específica
+    """
+    try:
+        # Buscar histórico de preços
+        historico = buscar_historico_precos(ticker, "max")
+        if historico is None:
+            return None
+        
+        # Buscar dividendos
+        dividendos = buscar_dividendos_historicos(ticker)
+        if dividendos is None:
+            return None
+        
+        # Converter data_inicio para datetime
+        if isinstance(data_inicio, str):
+            data_inicio = datetime.strptime(data_inicio, '%Y-%m-%d')
+        
+        # Encontrar o primeiro preço disponível após a data de início
+        precos_apos_inicio = historico[historico.index >= data_inicio]
+        if precos_apos_inicio.empty:
+            return None
+        
+        primeira_data = precos_apos_inicio.index[0]
+        preco_compra = precos_apos_inicio['Close'].iloc[0]
+        
+        # Calcular quantidade de ações compradas
+        quantidade_acoes = valor_investido / preco_compra
+        
+        # Preço atual (último preço disponível)
+        preco_atual = historico['Close'].iloc[-1]
+        
+        # Calcular dividendos recebidos desde a data de compra
+        dividendos_apos_compra = dividendos[dividendos['Data'] >= primeira_data]
+        total_dividendos_recebidos = (dividendos_apos_compra['Dividendo'] * quantidade_acoes).sum()
+        
+        # Calcular valores atuais
+        valor_investido_atual = quantidade_acoes * preco_atual
+        ganho_preco = valor_investido_atual - valor_investido
+        ganho_total = ganho_preco + total_dividendos_recebidos
+        
+        # Calcular percentuais
+        rentabilidade_dividendos_percentual = (total_dividendos_recebidos / valor_investido) * 100
+        rentabilidade_preco_percentual = (ganho_preco / valor_investido) * 100
+        rentabilidade_total_percentual = (ganho_total / valor_investido) * 100
+        
+        return {
+            'data_compra': primeira_data,
+            'preco_compra': preco_compra,
+            'quantidade_acoes': quantidade_acoes,
+            'preco_atual': preco_atual,
+            'valor_investido_atual': valor_investido_atual,
+            'total_dividendos_recebidos': total_dividendos_recebidos,
+            'ganho_preco': ganho_preco,
+            'ganho_total': ganho_total,
+            'rentabilidade_dividendos_percentual': rentabilidade_dividendos_percentual,
+            'rentabilidade_preco_percentual': rentabilidade_preco_percentual,
+            'rentabilidade_total_percentual': rentabilidade_total_percentual
+        }
+        
+    except Exception as e:
+        st.warning(f"⚠️ Erro na simulação de investimento: {str(e)}")
+        return None
+
+def calcular_dividend_yield(ticker):
+    """
+    Calcula o dividend yield de uma ação
+    """
+    try:
+        # Buscar dados da ação
+        dados_cotacao = buscar_cotacao_atual(ticker)
+        if not dados_cotacao:
+            return None
+            
+        # Buscar dividendos dos últimos 12 meses
+        dividendos = buscar_dividendos_historicos(ticker)
+        if dividendos is None:
+            return None
+            
+        # Calcular dividendos dos últimos 12 meses
+        data_limite = datetime.now() - timedelta(days=365)
+        dividendos_12m = dividendos[dividendos['Data'] >= data_limite]
+        
+        if dividendos_12m.empty:
+            return None
+            
+        total_dividendos_12m = dividendos_12m['Dividendo'].sum()
+        cotacao_atual = dados_cotacao['cotacao']
+        
+        # Calcular dividend yield
+        dividend_yield = (total_dividendos_12m / cotacao_atual) * 100
+        
+        return dividend_yield
+        
+    except Exception as e:
+        return None
 
 # ==============================
 # CONFIGURAÇÕES INICIAIS
@@ -594,8 +662,10 @@ if modo_analise == "🏆 Dados Gerais":
     
     st.divider()
     
-    # Abas para diferentes rankings
-    rank_tab1, rank_tab2, rank_tab3, rank_tab4 = st.tabs(["📈 Rentabilidade", "💰 Lucro e Receita", "🏛️ Solidez", "📊 Eficiência"])
+    # Abas para diferentes rankings - ADICIONANDO ABA DE DIVIDENDOS
+    rank_tab1, rank_tab2, rank_tab3, rank_tab4, rank_tab5 = st.tabs([
+        "📈 Rentabilidade", "💰 Lucro e Receita", "🏛️ Solidez", "📊 Eficiência", "💰 Dividendos"
+    ])
     
     with rank_tab1:
         col1, col2 = st.columns(2)
@@ -743,16 +813,118 @@ if modo_analise == "🏆 Dados Gerais":
                 st.plotly_chart(fig_wacc_rank, use_container_width=True)
             else:
                 st.warning("Não há dados de WACC disponíveis para ranking")
+    
+    with rank_tab5:
+        st.header("💰 Top 10 Pagadores de Dividendos")
+        st.write("**Ranking baseado no Dividend Yield (últimos 12 meses)**")
+        
+        # Buscar dados de dividend yield para todas as empresas
+        tickers_unicos = df_filtrado['Ticker'].unique()
+        
+        # Limitar a 30 empresas para não sobrecarregar a API
+        tickers_analisar = tickers_unicos[:30]
+        
+        dados_dy = []
+        
+        with st.spinner("Calculando dividend yields..."):
+            for ticker in tickers_analisar:
+                dy = calcular_dividend_yield(ticker)
+                if dy is not None:
+                    dados_cotacao = buscar_cotacao_atual(ticker)
+                    if dados_cotacao:
+                        dados_dy.append({
+                            'Ticker': ticker,
+                            'Dividend Yield': dy,
+                            'Cotação': dados_cotacao['cotacao'],
+                            'Setor': dados_cotacao['setor']
+                        })
+        
+        if dados_dy:
+            # Criar DataFrame e ordenar por Dividend Yield
+            df_dy = pd.DataFrame(dados_dy)
+            df_dy = df_dy.nlargest(10, 'Dividend Yield')
+            
+            # Gráfico de barras
+            fig_dy = px.bar(
+                df_dy, 
+                x='Ticker', 
+                y='Dividend Yield',
+                color='Setor',
+                title='Top 10 Empresas por Dividend Yield'
+            )
+            fig_dy.update_layout(
+                yaxis_title='Dividend Yield (%)',
+                yaxis_tickformat=',.2f',
+                height=500
+            )
+            st.plotly_chart(fig_dy, use_container_width=True)
+            
+            # Tabela detalhada
+            st.subheader("📊 Detalhamento do Ranking")
+            
+            # Formatar a tabela
+            df_dy_display = df_dy.copy()
+            df_dy_display['Dividend Yield'] = df_dy_display['Dividend Yield'].apply(
+                lambda x: f"{x:.2f}%"
+            )
+            df_dy_display['Cotação'] = df_dy_display['Cotação'].apply(
+                lambda x: f"R$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            )
+            
+            st.dataframe(
+                df_dy_display[['Ticker', 'Dividend Yield', 'Cotação', 'Setor']],
+                use_container_width=True
+            )
+            
+            # Análise qualitativa
+            st.subheader("💡 Análise dos Dividend Yields")
+            
+            dy_medio = df_dy['Dividend Yield'].mean()
+            dy_maximo = df_dy['Dividend Yield'].max()
+            dy_minimo = df_dy['Dividend Yield'].min()
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric("Dividend Yield Médio", f"{dy_medio:.2f}%")
+            
+            with col2:
+                st.metric("Maior Dividend Yield", f"{dy_maximo:.2f}%")
+            
+            with col3:
+                st.metric("Menor Dividend Yield", f"{dy_minimo:.2f}%")
+            
+            st.info("""
+            **📈 Interpretação dos Dividend Yields:**
+            
+            - **Acima de 8%:** Yield muito alto - pode indicar oportunidades ou riscos elevados
+            - **Entre 4% e 8%:** Yield atrativo - potencialmente bom para renda
+            - **Abaixo de 4%:** Yield moderado - empresas em crescimento podem pagar menos dividendos
+            
+            ⚠️ **Atenção:** Dividend Yield alto nem sempre é bom - pode indicar que o preço da ação caiu devido a problemas na empresa.
+            """)
+            
+        else:
+            st.warning("""
+            **ℹ️ Não foi possível calcular dividend yields**
+            
+            Possíveis razões:
+            - Limitações na API do Yahoo Finance
+            - Empresas não pagam dividendos regularmente
+            - Dados históricos insuficientes
+            """)
 
 # ==============================
-# TELA - VISÃO POR EMPRESA (COM DIVIDENDOS)
+# TELA - VISÃO POR EMPRESA (ESCALAS CORRIGIDAS)
 # ==============================
 elif modo_analise == "📈 Visão por Empresa":
     st.header(f"📊 Análise Detalhada - {ticker_selecionado}")
     
     if not df_empresa_todos_anos.empty:
-        # Abas para análise atual vs evolução temporal
-        tab_atual, tab_evolucao = st.tabs(["📊 Análise do Ano", "📈 Evolução Temporal"])
+        # Abas para análise atual vs evolução temporal - ADICIONANDO ABA DE SIMULAÇÃO
+        tab_atual, tab_evolucao, tab_dividendos, tab_simulacao = st.tabs([
+            "📊 Análise do Ano", "📈 Evolução Temporal", "💰 Dividendos", "💵 Simulação Investimento"
+        ])
         
         with tab_atual:
             st.subheader(f"Ano {ano_selecionado}")
@@ -842,12 +1014,8 @@ elif modo_analise == "📈 Visão por Empresa":
                 
                 st.divider()
                 
-                # Abas para diferentes categorias de indicadores - ADICIONANDO ABA DE DIVIDENDOS
-                tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
-                    "📈 Rentabilidade", "💰 EBITDA", "🏛️ Estrutura Capital", 
-                    "💸 Custo Capital", "📊 Lucro Econômico", "💵 Fluxo de Caixa", 
-                    "📋 Dados Brutos", "💰 Dividendos"  # NOVA ABA
-                ])
+                # Abas para diferentes categorias de indicadores - ADICIONANDO ABA DE FLUXO DE CAIXA
+                tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["📈 Rentabilidade", "💰 EBITDA", "🏛️ Estrutura Capital", "💸 Custo Capital", "📊 Lucro Econômico", "💵 Fluxo de Caixa", "📋 Dados Brutos"])
                 
                 with tab1:
                     st.subheader("Indicadores de Rentabilidade")
@@ -1220,7 +1388,6 @@ elif modo_analise == "📈 Visão por Empresa":
                                     st.warning("""
                                     **ℹ️ Informações Adicionais Necessárias:**
                                     - Para análise completa, é necessário o número de ações em circulação
-                                    - Com o número de ações, podemos calcular o preço por ação teórico
                                     - Considere também: crescimento futuro, perspectivas do setor, concorrência
                                     """)
                             
@@ -1415,190 +1582,6 @@ elif modo_analise == "📈 Visão por Empresa":
                     
                     st.dataframe(pd.DataFrame.from_dict(dados_brutos, orient='index', columns=['Valor']), 
                                use_container_width=True)
-                
-                with tab8:
-                    # NOVA ABA: DIVIDENDOS
-                    st.subheader("💰 Histórico de Dividendos")
-                    
-                    # Buscar dividendos
-                    with st.spinner("Buscando dados de dividendos..."):
-                        df_dividendos = buscar_dividendos_historicos(ticker_selecionado)
-                    
-                    if df_dividendos is not None and not df_dividendos.empty:
-                        # Estatísticas rápidas
-                        stats = calcular_estatisticas_dividendos(df_dividendos)
-                        
-                        col1, col2, col3, col4 = st.columns(4)
-                        
-                        with col1:
-                            st.metric(
-                                "Último Dividendo", 
-                                f"R$ {stats['ultimo_dividendo']:.4f}".replace(".", ","),
-                                help=f"Data: {stats['data_ultimo'].strftime('%d/%m/%Y') if stats['data_ultimo'] else 'N/A'}"
-                            )
-                        
-                        with col2:
-                            st.metric(
-                                "Total Distribuído", 
-                                formatar_moeda_brasil_correta(stats['total_dividendos'] * 1000),  # Converter para R$
-                                help="Soma histórica de dividendos"
-                            )
-                        
-                        with col3:
-                            st.metric(
-                                "Média Anual", 
-                                formatar_moeda_brasil_correta(stats['media_anual'] * 1000),
-                                help="Média de dividendos por ano"
-                            )
-                        
-                        with col4:
-                            st.metric(
-                                "Frequência/Ano", 
-                                f"{stats['frequencia_media']:.1f}",
-                                help="Pagamentos médios por ano"
-                            )
-                        
-                        # Gráfico de dividendos ao longo do tempo
-                        st.subheader("📈 Evolução dos Dividendos")
-                        
-                        fig_dividendos = px.line(
-                            df_dividendos, 
-                            x='Data', 
-                            y='Dividendo',
-                            title=f'Dividendos por Ação - {ticker_selecionado}',
-                            markers=True
-                        )
-                        fig_dividendos.update_layout(
-                            yaxis_title='Dividendo por Ação (R$)',
-                            xaxis_title='Data',
-                            height=400
-                        )
-                        fig_dividendos.update_yaxis(tickformat=",.4f")
-                        st.plotly_chart(fig_dividendos, use_container_width=True)
-                        
-                        # Dividendos por ano
-                        st.subheader("📊 Dividendos por Ano")
-                        dividendos_ano = df_dividendos.groupby('Ano')['Dividendo'].sum().reset_index()
-                        dividendos_ano['Dividendo Total'] = dividendos_ano['Dividendo']
-                        
-                        fig_ano = px.bar(
-                            dividendos_ano,
-                            x='Ano',
-                            y='Dividendo Total',
-                            title='Total de Dividendos por Ano'
-                        )
-                        fig_ano.update_layout(height=400)
-                        st.plotly_chart(fig_ano, use_container_width=True)
-                        
-                        # Tabela detalhada
-                        st.subheader("📋 Detalhamento dos Dividendos")
-                        
-                        # Formatar a tabela
-                        df_display = df_dividendos.copy()
-                        df_display['Dividendo'] = df_display['Dividendo'].apply(
-                            lambda x: f"R$ {x:.4f}".replace(".", ",")
-                        )
-                        df_display['Data'] = df_display['Data'].dt.strftime('%d/%m/%Y')
-                        df_display = df_display[['Data', 'Dividendo', 'Ano']].sort_values('Data', ascending=False)
-                        
-                        st.dataframe(df_display, use_container_width=True)
-                        
-                        # Análise de yield (se tivermos cotação)
-                        st.subheader("🎯 Análise de Dividend Yield")
-                        
-                        # Buscar cotação atual para cálculo do yield
-                        dados_cotacao = buscar_cotacao_atual(ticker_selecionado)
-                        
-                        if dados_cotacao and stats['ultimo_dividendo'] > 0:
-                            cotacao_atual = dados_cotacao['cotacao']
-                            
-                            # Calcular dividend yield baseado no último dividendo
-                            dy_ultimo = (stats['ultimo_dividendo'] / cotacao_atual) * 100
-                            
-                            # Calcular dividend yield médio anual
-                            dy_medio = (stats['media_anual'] / cotacao_atual) * 100
-                            
-                            col_dy1, col_dy2, col_dy3 = st.columns(3)
-                            
-                            with col_dy1:
-                                st.metric(
-                                    "Dividend Yield (Último)",
-                                    f"{dy_ultimo:.2f}%",
-                                    help="Baseado no último dividendo e cotação atual"
-                                )
-                            
-                            with col_dy2:
-                                st.metric(
-                                    "Dividend Yield (Médio)",
-                                    f"{dy_medio:.2f}%",
-                                    help="Baseado na média anual de dividendos"
-                                )
-                            
-                            with col_dy3:
-                                st.metric(
-                                    "Cotação Atual",
-                                    f"R$ {cotacao_atual:.2f}".replace(".", ",")
-                                )
-                            
-                            # Análise qualitativa do yield
-                            st.write("**💡 Análise do Dividend Yield:**")
-                            if dy_ultimo > 6:
-                                st.success("**✅ Yield Alto:** Acima de 6% ao ano - potencialmente atrativo para investidores de renda")
-                            elif dy_ultimo > 3:
-                                st.info("**🟡 Yield Moderado:** Entre 3% e 6% ao ano - dentro da média do mercado")
-                            else:
-                                st.warning("**🔴 Yield Baixo:** Abaixo de 3% ao ano - foco pode ser mais no crescimento que na renda")
-                        
-                        # Projeção de dividendos futuros
-                        st.subheader("🔮 Projeção de Dividendos")
-                        
-                        projecao = prever_dividendos(df_dividendos)
-                        
-                        if projecao:
-                            col_proj1, col_proj2, col_proj3 = st.columns(3)
-                            
-                            with col_proj1:
-                                crescimento_formatado = formatar_percentual_brasil(projecao['crescimento_medio'], 2)
-                                st.metric(
-                                    "Crescimento Médio",
-                                    crescimento_formatado,
-                                    help="Crescimento médio histórico dos dividendos"
-                                )
-                            
-                            with col_proj2:
-                                st.metric(
-                                    "Projeção Próximo Ano",
-                                    f"R$ {projecao['projecao_proximo_ano']:.4f}".replace(".", ","),
-                                    help="Projeção baseada no crescimento médio"
-                                )
-                            
-                            with col_proj3:
-                                st.metric(
-                                    "Confiabilidade",
-                                    projecao['confiabilidade'],
-                                    help="Baseada na quantidade de dados históricos"
-                                )
-                            
-                            st.info("""
-                            **💡 Observação sobre Projeções:**
-                            - Projeções são baseadas apenas em dados históricos
-                            - Não consideram mudanças estratégicas da empresa
-                            - Mercado, economia e setor podem impactar resultados futuros
-                            - Use como referência, não como garantia
-                            """)
-                        
-                    else:
-                        st.warning(f"""
-                        **ℹ️ Dados de Dividendos Não Encontrados**
-                        
-                        Não foi possível recuperar o histórico de dividendos para {ticker_selecionado}.
-                        
-                        Possíveis razões:
-                        - A empresa não distribui dividendos regularmente
-                        - O ticker pode estar com formato diferente
-                        - Limitações temporárias na API do Yahoo Finance
-                        - A empresa pode ser recente no mercado
-                        """)
             
             else:
                 st.warning(f"Não há dados disponíveis para {ticker_selecionado} no ano {ano_selecionado}")
@@ -1854,47 +1837,6 @@ elif modo_analise == "📈 Visão por Empresa":
                             )
                             st.plotly_chart(fig_comparacao, use_container_width=True)
                 
-                # QUINTA LINHA - DIVIDENDOS (NOVA SEÇÃO)
-                st.subheader("💰 Evolução dos Dividendos")
-                
-                # Buscar dividendos para análise histórica
-                with st.spinner("Buscando dados históricos de dividendos..."):
-                    df_dividendos = buscar_dividendos_historicos(ticker_selecionado)
-                
-                if df_dividendos is not None and not df_dividendos.empty:
-                    col9, col10 = st.columns(2)
-                    
-                    with col9:
-                        # Dividendos por ano
-                        dividendos_ano = df_dividendos.groupby('Ano')['Dividendo'].sum().reset_index()
-                        
-                        fig_dividendos_ano = px.bar(
-                            dividendos_ano,
-                            x='Ano',
-                            y='Dividendo',
-                            title='Total de Dividendos por Ano'
-                        )
-                        fig_dividendos_ano.update_layout(
-                            yaxis_title='Dividendos por Ação (R$)',
-                            height=400
-                        )
-                        st.plotly_chart(fig_dividendos_ano, use_container_width=True)
-                    
-                    with col10:
-                        # Média móvel de dividendos
-                        df_dividendos_sorted = df_dividendos.sort_values('Data')
-                        df_dividendos_sorted['Media_Movel'] = df_dividendos_sorted['Dividendo'].rolling(window=4, min_periods=1).mean()
-                        
-                        fig_media_movel = px.line(
-                            df_dividendos_sorted,
-                            x='Data',
-                            y=['Dividendo', 'Media_Movel'],
-                            title='Dividendos e Média Móvel (4 períodos)',
-                            labels={'value': 'Dividendo por Ação (R$)', 'variable': 'Legenda'}
-                        )
-                        fig_media_movel.update_layout(height=400)
-                        st.plotly_chart(fig_media_movel, use_container_width=True)
-                
                 # Tabela resumo da evolução - INCLUINDO CAIXA OPERACIONAL
                 st.subheader("📋 Resumo da Evolução - Principais Indicadores")
                 
@@ -1923,6 +1865,323 @@ elif modo_analise == "📈 Visão por Empresa":
                 
             else:
                 st.info("ℹ️ São necessários dados de múltiplos anos para análise de evolução temporal")
+        
+        with tab_dividendos:
+            st.subheader("💰 Histórico de Dividendos")
+            
+            # Buscar dividendos
+            with st.spinner("Buscando dados de dividendos..."):
+                df_dividendos = buscar_dividendos_historicos(ticker_selecionado)
+            
+            if df_dividendos is not None and not df_dividendos.empty:
+                # Estatísticas rápidas
+                stats = calcular_estatisticas_dividendos(df_dividendos)
+                
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    st.metric(
+                        "Último Dividendo", 
+                        f"R$ {stats['ultimo_dividendo']:.4f}".replace(".", ","),
+                        help=f"Data: {stats['data_ultimo'].strftime('%d/%m/%Y') if stats['data_ultimo'] else 'N/A'}"
+                    )
+                
+                with col2:
+                    st.metric(
+                        "Total Distribuído", 
+                        formatar_moeda_brasil_correta(stats['total_dividendos'] * 1000),  # Converter para R$
+                        help="Soma histórica de dividendos"
+                    )
+                
+                with col3:
+                    st.metric(
+                        "Média Anual", 
+                        formatar_moeda_brasil_correta(stats['media_anual'] * 1000),
+                        help="Média de dividendos por ano"
+                    )
+                
+                with col4:
+                    st.metric(
+                        "Frequência/Ano", 
+                        f"{stats['frequencia_media']:.1f}",
+                        help="Pagamentos médios por ano"
+                    )
+                
+                # Gráfico de dividendos ao longo do tempo
+                st.subheader("📈 Evolução dos Dividendos")
+                
+                fig_dividendos = px.line(
+                    df_dividendos, 
+                    x='Data', 
+                    y='Dividendo',
+                    title=f'Dividendos por Ação - {ticker_selecionado}',
+                    markers=True
+                )
+                fig_dividendos.update_layout(
+                    yaxis_title='Dividendo por Ação (R$)',
+                    xaxis_title='Data',
+                    height=400
+                )
+                fig_dividendos.update_yaxis(tickformat=",.4f")
+                st.plotly_chart(fig_dividendos, use_container_width=True)
+                
+                # Dividendos por ano
+                st.subheader("📊 Dividendos por Ano")
+                dividendos_ano = df_dividendos.groupby('Ano')['Dividendo'].sum().reset_index()
+                dividendos_ano['Dividendo Total'] = dividendos_ano['Dividendo']
+                
+                fig_ano = px.bar(
+                    dividendos_ano,
+                    x='Ano',
+                    y='Dividendo Total',
+                    title='Total de Dividendos por Ano'
+                )
+                fig_ano.update_layout(height=400)
+                st.plotly_chart(fig_ano, use_container_width=True)
+                
+                # Tabela detalhada
+                st.subheader("📋 Detalhamento dos Dividendos")
+                
+                # Formatar a tabela
+                df_display = df_dividendos.copy()
+                df_display['Dividendo'] = df_display['Dividendo'].apply(
+                    lambda x: f"R$ {x:.4f}".replace(".", ",")
+                )
+                df_display['Data'] = df_display['Data'].dt.strftime('%d/%m/%Y')
+                df_display = df_display[['Data', 'Dividendo', 'Ano']].sort_values('Data', ascending=False)
+                
+                st.dataframe(df_display, use_container_width=True)
+                
+                # Análise de yield (se tivermos cotação)
+                st.subheader("🎯 Análise de Dividend Yield")
+                
+                # Buscar cotação atual para cálculo do yield
+                dados_cotacao = buscar_cotacao_atual(ticker_selecionado)
+                
+                if dados_cotacao and stats['ultimo_dividendo'] > 0:
+                    cotacao_atual = dados_cotacao['cotacao']
+                    
+                    # Calcular dividend yield baseado no último dividendo
+                    dy_ultimo = (stats['ultimo_dividendo'] / cotacao_atual) * 100
+                    
+                    # Calcular dividend yield médio anual
+                    dy_medio = (stats['media_anual'] / cotacao_atual) * 100
+                    
+                    col_dy1, col_dy2, col_dy3 = st.columns(3)
+                    
+                    with col_dy1:
+                        st.metric(
+                            "Dividend Yield (Último)",
+                            f"{dy_ultimo:.2f}%",
+                            help="Baseado no último dividendo e cotação atual"
+                        )
+                    
+                    with col_dy2:
+                        st.metric(
+                            "Dividend Yield (Médio)",
+                            f"{dy_medio:.2f}%",
+                            help="Baseado na média anual de dividendos"
+                        )
+                    
+                    with col_dy3:
+                        st.metric(
+                            "Cotação Atual",
+                            f"R$ {cotacao_atual:.2f}".replace(".", ",")
+                        )
+                    
+                    # Análise qualitativa do yield
+                    st.write("**💡 Análise do Dividend Yield:**")
+                    if dy_ultimo > 6:
+                        st.success("**✅ Yield Alto:** Acima de 6% ao ano - potencialmente atrativo para investidores de renda")
+                    elif dy_ultimo > 3:
+                        st.info("**🟡 Yield Moderado:** Entre 3% e 6% ao ano - dentro da média do mercado")
+                    else:
+                        st.warning("**🔴 Yield Baixo:** Abaixo de 3% ao ano - foco pode ser mais no crescimento que na renda")
+                
+            else:
+                st.warning(f"""
+                **ℹ️ Dados de Dividendos Não Encontrados**
+                
+                Não foi possível recuperar o histórico de dividendos para {ticker_selecionado}.
+                
+                Possíveis razões:
+                - A empresa não distribui dividendos regularmente
+                - O ticker pode estar com formato diferente
+                - Limitações temporárias na API do Yahoo Finance
+                - A empresa pode ser recente no mercado
+                """)
+        
+        with tab_simulacao:
+            st.subheader("💵 Simulação de Investimento")
+            st.write("**Simule um investimento de R$ 1.000,00 desde uma data específica até hoje**")
+            
+            # Configuração da simulação
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                data_inicio = st.date_input(
+                    "Data do investimento inicial",
+                    min_value=datetime(2010, 1, 1),
+                    max_value=datetime.now(),
+                    value=datetime(2015, 1, 1),
+                    help="Data em que o investimento de R$ 1.000,00 seria feito"
+                )
+            
+            with col2:
+                valor_investido = st.number_input(
+                    "Valor investido (R$)",
+                    min_value=100,
+                    value=1000,
+                    step=100,
+                    help="Valor inicial do investimento"
+                )
+            
+            if st.button("🎯 Calcular Simulação", type="primary"):
+                with st.spinner("Calculando resultado do investimento..."):
+                    resultado = simular_investimento(ticker_selecionado, data_inicio, valor_investido)
+                
+                if resultado:
+                    st.success("Simulação concluída!")
+                    
+                    # Métricas principais
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        st.metric(
+                            "Valor Investido", 
+                            formatar_moeda_brasil_correta(valor_investido / 1000),
+                            help="Valor inicial do investimento"
+                        )
+                    
+                    with col2:
+                        st.metric(
+                            "Valor Atual da Posição", 
+                            formatar_moeda_brasil_correta(resultado['valor_investido_atual'] / 1000),
+                            delta=f"{resultado['rentabilidade_preco_percentual']:+.2f}%",
+                            help="Valor atual das ações (sem considerar dividendos)"
+                        )
+                    
+                    with col3:
+                        st.metric(
+                            "Total em Dividendos", 
+                            formatar_moeda_brasil_correta(resultado['total_dividendos_recebidos'] / 1000),
+                            delta=f"{resultado['rentabilidade_dividendos_percentual']:+.2f}%",
+                            help="Total de dividendos recebidos no período"
+                        )
+                    
+                    with col4:
+                        st.metric(
+                            "Retorno Total", 
+                            formatar_moeda_brasil_correta(resultado['ganho_total'] / 1000),
+                            delta=f"{resultado['rentabilidade_total_percentual']:+.2f}%",
+                            help="Soma da valorização + dividendos"
+                        )
+                    
+                    # Detalhamento da simulação
+                    st.subheader("📊 Detalhamento da Simulação")
+                    
+                    col_det1, col_det2 = st.columns(2)
+                    
+                    with col_det1:
+                        st.write("**📈 Informações da Compra:**")
+                        st.write(f"- **Data da compra:** {resultado['data_compra'].strftime('%d/%m/%Y')}")
+                        st.write(f"- **Preço de compra:** R$ {resultado['preco_compra']:.2f}".replace(".", ","))
+                        st.write(f"- **Quantidade de ações:** {resultado['quantidade_acoes']:.2f}")
+                        st.write(f"- **Valor investido:** {formatar_moeda_brasil_correta(valor_investido / 1000)}")
+                    
+                    with col_det2:
+                        st.write("**💰 Situação Atual:**")
+                        st.write(f"- **Preço atual:** R$ {resultado['preco_atual']:.2f}".replace(".", ","))
+                        st.write(f"- **Valor das ações hoje:** {formatar_moeda_brasil_correta(resultado['valor_investido_atual'] / 1000)}")
+                        st.write(f"- **Total em dividendos:** {formatar_moeda_brasil_correta(resultado['total_dividendos_recebidos'] / 1000)}")
+                        st.write(f"- **Retorno total:** {formatar_moeda_brasil_correta(resultado['ganho_total'] / 1000)}")
+                    
+                    # Análise qualitativa
+                    st.subheader("💡 Análise do Investimento")
+                    
+                    if resultado['rentabilidade_total_percentual'] > 0:
+                        if resultado['rentabilidade_total_percentual'] > 100:
+                            st.success(f"""
+                            **🎉 Excelente Investimento!**
+                            
+                            Se você tivesse investido **{formatar_moeda_brasil_correta(valor_investido / 1000)}** em {ticker_selecionado} em {data_inicio.strftime('%d/%m/%Y')}:
+                            
+                            - 🔥 **Seu investimento teria mais que DOBRADO**
+                            - 💰 **Valor total hoje:** {formatar_moeda_brasil_correta((valor_investido + resultado['ganho_total']) / 1000)}
+                            - 📈 **Retorno total:** {resultado['rentabilidade_total_percentual']:.2f}%
+                            - 🎯 **Isso equivale a** {resultado['rentabilidade_total_percentual']/12:.2f}% ao ano em média
+                            """)
+                        else:
+                            st.success(f"""
+                            **✅ Bom Investimento!**
+                            
+                            Se você tivesse investido **{formatar_moeda_brasil_correta(valor_investido / 1000)}** em {ticker_selecionado} em {data_inicio.strftime('%d/%m/%Y')}:
+                            
+                            - 💰 **Valor total hoje:** {formatar_moeda_brasil_correta((valor_investido + resultado['ganho_total']) / 1000)}
+                            - 📈 **Retorno total:** {resultado['rentabilidade_total_percentual']:.2f}%
+                            - 🎯 **Isso equivale a** {resultado['rentabilidade_total_percentual']/12:.2f}% ao ano em média
+                            """)
+                    else:
+                        st.warning(f"""
+                        **⚠️ Investimento com Prejuízo**
+                        
+                        Se você tivesse investido **{formatar_moeda_brasil_correta(valor_investido / 1000)}** em {ticker_selecionado} em {data_inicio.strftime('%d/%m/%Y')}:
+                        
+                        - 💸 **Valor total hoje:** {formatar_moeda_brasil_correta((valor_investido + resultado['ganho_total']) / 1000)}
+                        - 📉 **Prejuízo total:** {resultado['rentabilidade_total_percentual']:.2f}%
+                        - ⏳ **Isso equivale a** {resultado['rentabilidade_total_percentual']/12:.2f}% ao ano em média
+                        """)
+                    
+                    # Composição do retorno
+                    st.subheader("📈 Composição do Retorno")
+                    
+                    fig_composicao = go.Figure()
+                    
+                    valores = [
+                        resultado['ganho_preco'],
+                        resultado['total_dividendos_recebidos']
+                    ]
+                    nomes = ['Valorização do Preço', 'Dividendos Recebidos']
+                    cores = ['#2ecc71', '#3498db']
+                    
+                    fig_composicao.add_trace(go.Pie(
+                        labels=nomes,
+                        values=valores,
+                        hole=.3,
+                        marker=dict(colors=cores)
+                    ))
+                    
+                    fig_composicao.update_layout(
+                        title='Composição do Ganho Total',
+                        height=400
+                    )
+                    
+                    st.plotly_chart(fig_composicao, use_container_width=True)
+                    
+                    st.info(f"""
+                    **📊 Resumo da Composição:**
+                    
+                    - **Valorização do preço:** {formatar_moeda_brasil_correta(resultado['ganho_preco'] / 1000)} ({resultado['rentabilidade_preco_percentual']:.2f}%)
+                    - **Dividendos recebidos:** {formatar_moeda_brasil_correta(resultado['total_dividendos_recebidos'] / 1000)} ({resultado['rentabilidade_dividendos_percentual']:.2f}%)
+                    - **Retorno total:** {formatar_moeda_brasil_correta(resultado['ganho_total'] / 1000)} ({resultado['rentabilidade_total_percentual']:.2f}%)
+                    
+                    **💡 Interpretação:**
+                    - A **valorização do preço** reflete o crescimento (ou queda) no valor das ações
+                    - Os **dividendos** representam a distribuição de lucros aos acionistas
+                    - O **retorno total** é a soma desses dois componentes
+                    """)
+                
+                else:
+                    st.error("""
+                    **❌ Não foi possível realizar a simulação**
+                    
+                    Possíveis razões:
+                    - Dados históricos insuficientes para o período selecionado
+                    - Ticker não encontrado ou sem dados de preços
+                    - Erro na conexão com a API do Yahoo Finance
+                    
+                    Tente selecionar uma data mais recente ou verificar o ticker.
+                    """)
 
 # ==============================
 # TELA - ANÁLISE SETORIAL (ESCALAS CORRIGIDAS)
@@ -2108,135 +2367,4 @@ elif modo_analise == "🏭 Análise Setorial":
                         )
                         st.plotly_chart(fig_setor_ebitda, use_container_width=True)
                 
-                # Tabela resumo da evolução do setor
-                st.subheader("📋 Resumo da Evolução do Setor - Principais Indicadores")
-                
-                # Formatar para porcentagem e valores monetários
-                def formatar_valor_setor(valor, coluna):
-                    if coluna in ['ROE', 'ROA', 'ROI', 'Margem Líquida', 'wacc', 'Percentual Capital Próprio']:
-                        return formatar_percentual_brasil(valor, 2) if pd.notna(valor) else "N/A"
-                    elif coluna in ['Lucro Econômico 1', 'EBITDA']:
-                        return formatar_moeda_brasil_correta(valor) if pd.notna(valor) else "N/A"
-                    else:
-                        return valor
-                
-                # Aplicar formatação
-                df_setor_formatado = df_setor_evolucao.copy()
-                for col in df_setor_formatado.columns:
-                    if col != 'Ano':
-                        df_setor_formatado[col] = df_setor_formatado[col].apply(lambda x: formatar_valor_setor(x, col))
-                
-                st.dataframe(df_setor_formatado, use_container_width=True)
-                
-                # Dispersão do setor
-                st.subheader("📊 Dispersão de Rentabilidade no Setor")
-                
-                if ano_selecionado in df_setor_todos_anos['Ano'].values:
-                    df_setor_ano = df_setor_todos_anos[df_setor_todos_anos['Ano'] == ano_selecionado]
-                    
-                    if not df_setor_ano.empty and 'ROE' in df_setor_ano.columns:
-                        fig_dispersao = px.box(df_setor_ano, y='ROE', 
-                                             title=f'Distribuição do ROE no Setor - {ano_selecionado}')
-                        fig_dispersao.update_layout(yaxis_tickformat=',.2%')
-                        st.plotly_chart(fig_dispersao, use_container_width=True)
-                
-            else:
-                st.info("ℹ️ São necessários dados de múltiplos anos para análise de evolução temporal do setor")
-
-# ==============================
-# SEÇÃO DE FÓRMULAS DOS INDICADORES
-# ==============================
-st.divider()
-st.header("📚 Fórmulas dos Indicadores (VELLANI, 2024)")
-
-formulas = {
-    "ROE (Return on Equity)": "Lucro Líquido ÷ Patrimônio Líquido Médio",
-    "ROA (Return on Assets)": "Resultado Operacional ÷ Ativo Total Médio", 
-    "ROI (Return on Investment)": "Resultado Operacional ÷ Investimento Médio",
-    "Investimento Médio": "Média[(Empréstimos Circulante + Empréstimos Não Circulante + PL) atual e anterior]",
-    "Margem Bruta": "Resultado Bruto ÷ Receita de Vendas",
-    "Margem Operacional": "Resultado Operacional ÷ Receita de Vendas",
-    "Margem Líquida": "Lucro Líquido ÷ Receita de Vendas",
-    "ki (Custo da Dívida)": "Despesas Financeiras ÷ Passivo Oneroso Médio",
-    "ke (Custo do Capital Próprio)": "Dividendos Pagos ÷ Patrimônio Líquido Médio",
-    "WACC": "(ki × % Capital Terceiros) + (ke × % Capital Próprio)",
-    "Lucro Econômico 1": "(ROI - WACC) × Investimento Médio",
-    "Lucro Econômico 2": "Resultado Operacional - (WACC × Investimento Médio)",
-    "EBITDA": "Resultado Operacional + Depreciação + Amortização",
-    "Valuation Lucro Econômico/SELIC": "Lucro Econômico ÷ (SELIC/100)",
-    "Percentual Capital Terceiros": "(Passivo Circulante + Não Circulante) ÷ Total Passivo",
-    "Percentual Capital Próprio": "Patrimônio Líquido ÷ Total Passivo",
-    "Caixa Líquido Atividades Operacionais": "Fluxo de caixa gerado/consumido pelas atividades operacionais",
-    "Dividend Yield": "(Dividendo por Ação ÷ Cotação) × 100"
-}
-
-# Exibir fórmulas em colunas
-col1, col2 = st.columns(2)
-
-with col1:
-    for i, (indicador, formula) in enumerate(formulas.items()):
-        if i < len(formulas) // 2:
-            with st.expander(f"**{indicador}**"):
-                st.write(f"`{formula}`")
-
-with col2:
-    for i, (indicador, formula) in enumerate(formulas.items()):
-        if i >= len(formulas) // 2:
-            with st.expander(f"**{indicador}**"):
-                st.write(f"`{formula}`")
-
-# ==============================
-# INFORMAÇÕES GERAIS
-# ==============================
-st.sidebar.divider()
-st.sidebar.header("ℹ️ Informações")
-st.sidebar.info(
-    "Este dashboard apresenta os principais indicadores financeiros "
-    "calculados conforme metodologia Vellani (2024)"
-)
-
-# Rodapé
-st.divider()
-st.caption(f"📊 Dashboard CVM - Indicadores Financeiros | Dados atualizados para {ano_selecionado} | Total de empresas na base: {df['Ticker'].nunique()}")
-
-# Adicionar informações sobre os cálculos
-with st.sidebar.expander("💡 Metodologia livro Vellani (2024)"):
-    st.write("""
-    **Cálculos Verificados:**
-    
-    **VERIFICAÇÃO:**
-    - Lucro Econômico 1 IGUAL ao Lucro Econômico 2 
-    
-     **Consistência Garantida:**
-    - ROI = Resultado Operacional ÷ Investimento Médio
-    - Lucro Econômico 1 = (ROI - WACC) × Investimento Médio
-    - Lucro Econômico 2 = Resultado Operacional - (WACC × Investimento Médio)
-    - **RESULTADO:** Lucro Econômico 1 = Lucro Econômico 2
-
-    **EBITDA Corrigido:**
-    - **EXCLUSIVAMENTE** usando a coluna 'Depreciação e amortização'
-    - **CORREÇÃO:** Usa valores absolutos para depreciação/amortização para garantir cálculo correto
-    - **FÓRMULA:** EBITDA = Resultado Operacional + |Depreciação e Amortização|
-
-    **Valuation Lucro Econômico/SELIC (CORRIGIDO):**
-    - **FÓRMULA CORRETA:** Valor da Empresa = Lucro Econômico ÷ (SELIC/100)
-    - **CONVERSÃO:** Valor em R$ mil convertido para R$ normais (×1000)
-    - **COTAÇÃO ESPERADA:** Valor da Empresa (R$) ÷ Número de Ações
-    - **COTAÇÃO:** Busca em tempo real via Yahoo Finance
-    - **ANÁLISE:** Comparação entre valuation calculado e cotação de mercado
-
-    **Novas Funcionalidades:**
-    - **FLUXO DE CAIXA OPERACIONAL:** Adicionada análise do Caixa Líquido de Atividades Operacionais
-    - **COMPARAÇÃO:** Caixa Operacional vs Lucro Líquido para análise de qualidade do lucro
-    - **EVOLUÇÃO TEMPORAL:** Gráficos de fluxo de caixa na análise histórica
-    - **DIVIDENDOS:** Histórico completo de dividendos com análise de yield
-    - **PROJEÇÕES:** Estimativas de dividendos futuros baseadas no histórico
-
-    **Dataset: dff_2010_2024**
-    - Período: 2010-2024 (15 anos)
-    - Empresas: 253 únicas
-    - Tickers: 317 únicos
-    - Setores: 43 categorias
-    - **ESCALA DOS VALORES NO DATASET:** R$ mil
-    - **NÚMERO DE AÇÕES:** Disponível apenas para 2024
-    """)
+                # Tabela resumo da
