@@ -1944,9 +1944,11 @@ elif modo_analise == "📈 Visão por Empresa":
                 fig_dividendos.update_layout(
                     yaxis_title='Dividendo por Ação (R$)',
                     xaxis_title='Data',
+                    yaxis_title="Dividendos (R$)",
+                    yaxis_tickprefix="R$ ",
                     height=400,
                     yaxis=dict(
-                        tickformat=".4f",  # 4 casas decimais
+                        tickformat=".2f",  # 4 casas decimais
                         separatethousands=True,
                         tickmode='auto'
                     )
