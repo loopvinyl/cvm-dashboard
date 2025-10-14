@@ -186,9 +186,9 @@ def buscar_historico_precos(ticker, periodo_maximo="max"):
         st.warning(f"⚠️ Não foi possível buscar histórico de preços para {ticker}: {str(e)}")
         return None
 
-def simular_investimento(ticker, data_inicio, valor_investido=1000):
+def simular_investimento_lotes(ticker, data_inicio, quantidade_acoes=100):
     """
-    Simula um investimento de R$ 1.000,00 a partir de uma data específica
+    Simula um investimento por quantidade de ações (lotes)
     CORRIGIDA: compatibilidade de timezone
     """
     try:
@@ -212,8 +212,8 @@ def simular_investimento(ticker, data_inicio, valor_investido=1000):
         primeira_data = precos_apos_inicio.index[0]
         preco_compra = precos_apos_inicio['Close'].iloc[0]
         
-        # Calcular quantidade de ações compradas
-        quantidade_acoes = valor_investido / preco_compra
+        # Calcular valor investido baseado na quantidade de ações
+        valor_investido = quantidade_acoes * preco_compra
         
         # Preço atual (último preço disponível)
         preco_atual = historico['Close'].iloc[-1]
@@ -238,6 +238,7 @@ def simular_investimento(ticker, data_inicio, valor_investido=1000):
             'data_compra': primeira_data,
             'preco_compra': preco_compra,
             'quantidade_acoes': quantidade_acoes,
+            'valor_investido': valor_investido,
             'preco_atual': preco_atual,
             'valor_investido_atual': valor_investido_atual,
             'total_dividendos_recebidos': total_dividendos_recebidos,
@@ -284,6 +285,102 @@ def calcular_dividend_yield(ticker):
         
     except Exception as e:
         return None
+
+# ==============================
+# NOVO: SISTEMA DE CACHE DE DIVIDENDOS
+# ==============================
+@st.cache_data(ttl=86400)  # Cache por 24 horas
+def carregar_dados_dividendos_cache():
+    """
+    Carrega dados de dividendos de um arquivo CSV pré-processado
+    ou busca via Yahoo Finance com fallback
+    """
+    try:
+        # Tentar carregar arquivo local primeiro
+        dividendos_paths = [
+            "dividendos_historico.csv",
+            "./data/dividendos_historico.csv",
+            "/content/dividendos_historico.csv"
+        ]
+        
+        for path in dividendos_paths:
+            if os.path.exists(path):
+                df_dividendos = pd.read_csv(path)
+                df_dividendos['Data'] = pd.to_datetime(df_dividendos['Data'])
+                return df_dividendos
+                
+        # Se não encontrou arquivo, retornar None
+        return None
+    except:
+        return None
+
+def calcular_dividend_yield_otimizado(ticker, df_dividendos_cache=None, periodo_anos=1):
+    """
+    Versão otimizada do cálculo de dividend yield
+    """
+    try:
+        # Buscar cotação atual
+        dados_cotacao = buscar_cotacao_atual(ticker)
+        if not dados_cotacao:
+            return None
+            
+        cotacao_atual = dados_cotacao['cotacao']
+        
+        # Tentar usar cache primeiro
+        if df_dividendos_cache is not None:
+            dividendos_ticker = df_dividendos_cache[df_dividendos_cache['Ticker'] == ticker]
+            if not dividendos_ticker.empty:
+                # Calcular dividendos dos últimos N anos
+                data_limite = datetime.now() - timedelta(days=365 * periodo_anos)
+                dividendos_periodo = dividendos_ticker[dividendos_ticker['Data'] >= data_limite]
+                
+                if not dividendos_periodo.empty:
+                    total_dividendos = dividendos_periodo['Dividendo'].sum()
+                    dividend_yield = (total_dividendos / cotacao_atual) * 100
+                    return dividend_yield
+        
+        # Fallback: buscar via Yahoo Finance
+        return calcular_dividend_yield(ticker)
+        
+    except Exception as e:
+        return None
+
+# ==============================
+# NOVO: SISTEMA DE RANKING DE DIVIDENDOS FLEXÍVEL
+# ==============================
+def calcular_ranking_dividendos(df_filtrado, periodo_anos=1, limite_empresas=50):
+    """
+    Calcula ranking de dividendos com diferentes períodos
+    """
+    # Carregar cache de dividendos
+    df_dividendos_cache = carregar_dados_dividendos_cache()
+    
+    tickers_unicos = df_filtrado['Ticker'].unique()
+    tickers_analisar = tickers_unicos[:limite_empresas]
+    
+    dados_dy = []
+    
+    with st.spinner(f"Calculando dividend yields (últimos {periodo_anos} anos)..."):
+        progress_bar = st.progress(0)
+        for i, ticker in enumerate(tickers_analisar):
+            try:
+                dy = calcular_dividend_yield_otimizado(ticker, df_dividendos_cache, periodo_anos)
+                if dy is not None and dy > 0:
+                    dados_cotacao = buscar_cotacao_atual(ticker)
+                    if dados_cotacao:
+                        dados_dy.append({
+                            'Ticker': ticker,
+                            'Dividend Yield': dy,
+                            'Cotação': dados_cotacao['cotacao'],
+                            'Setor': dados_cotacao['setor'],
+                            'Periodo_Anos': periodo_anos
+                        })
+            except:
+                pass
+            
+            progress_bar.progress((i + 1) / len(tickers_analisar))
+    
+    return dados_dy
 
 # ==============================
 # CONFIGURAÇÕES INICIAIS
@@ -676,7 +773,7 @@ if modo_analise == "🏆 Dados Gerais":
     
     st.divider()
     
-    # Abas para diferentes rankings - ADICIONANDO ABA DE DIVIDENDOS
+    # Abas para diferentes rankings - ADICIONANDO ABA DE DIVIDENDOS MELHORADA
     rank_tab1, rank_tab2, rank_tab3, rank_tab4, rank_tab5 = st.tabs([
         "📈 Rentabilidade", "💰 Lucro e Receita", "🏛️ Solidez", "📊 Eficiência", "💰 Dividendos"
     ])
@@ -829,50 +926,42 @@ if modo_analise == "🏆 Dados Gerais":
                 st.warning("Não há dados de WACC disponíveis para ranking")
     
     with rank_tab5:
-        st.header("💰 Top 10 Pagadores de Dividendos")
-        st.write("**Ranking baseado no Dividend Yield (últimos 12 meses)**")
+        st.header("💰 Top Pagadores de Dividendos")
         
-        # Buscar dados de dividend yield para todas as empresas
-        tickers_unicos = df_filtrado['Ticker'].unique()
+        # Controles para seleção de período
+        col_periodo, col_lote = st.columns(2)
         
-        # Aumentar limite para 50 empresas
-        tickers_analisar = tickers_unicos[:50]
+        with col_periodo:
+            periodo_selecionado = st.selectbox(
+                "Período de análise:",
+                [1, 2, 3, 5, 10],
+                index=0,
+                format_func=lambda x: f"Últimos {x} anos"
+            )
         
-        dados_dy = []
+        with col_lote:
+            limite_empresas = st.selectbox(
+                "Número de empresas:",
+                [30, 50, 100],
+                index=0,
+                format_func=lambda x: f"Top {x} empresas"
+            )
         
-        with st.spinner("Calculando dividend yields... Isso pode levar alguns minutos"):
-            progress_bar = st.progress(0)
-            for i, ticker in enumerate(tickers_analisar):
-                try:
-                    dy = calcular_dividend_yield(ticker)
-                    if dy is not None and dy > 0:  # Só incluir se tiver dividend yield positivo
-                        dados_cotacao = buscar_cotacao_atual(ticker)
-                        if dados_cotacao:
-                            dados_dy.append({
-                                'Ticker': ticker,
-                                'Dividend Yield': dy,
-                                'Cotação': dados_cotacao['cotacao'],
-                                'Setor': dados_cotacao['setor']
-                            })
-                except Exception as e:
-                    # Silenciosamente ignora erros e continua
-                    pass
-                
-                # Atualizar barra de progresso
-                progress_bar.progress((i + 1) / len(tickers_analisar))
+        # Calcular ranking
+        dados_dy = calcular_ranking_dividendos(df_filtrado, periodo_selecionado, limite_empresas)
         
         if dados_dy:
-            # Criar DataFrame e ordenar por Dividend Yield
+            # Criar DataFrame e ordenar
             df_dy = pd.DataFrame(dados_dy)
             df_dy = df_dy.nlargest(10, 'Dividend Yield')
             
-            # Gráfico de barras
+            # Gráfico
             fig_dy = px.bar(
                 df_dy, 
                 x='Ticker', 
                 y='Dividend Yield',
                 color='Setor',
-                title='Top 10 Empresas por Dividend Yield'
+                title=f'Top 10 Empresas por Dividend Yield (Últimos {periodo_selecionado} anos)'
             )
             fig_dy.update_layout(
                 yaxis_title='Dividend Yield (%)',
@@ -884,11 +973,8 @@ if modo_analise == "🏆 Dados Gerais":
             # Tabela detalhada
             st.subheader("📊 Detalhamento do Ranking")
             
-            # Formatar a tabela
             df_dy_display = df_dy.copy()
-            df_dy_display['Dividend Yield'] = df_dy_display['Dividend Yield'].apply(
-                lambda x: f"{x:.2f}%"
-            )
+            df_dy_display['Dividend Yield'] = df_dy_display['Dividend Yield'].apply(lambda x: f"{x:.2f}%")
             df_dy_display['Cotação'] = df_dy_display['Cotação'].apply(
                 lambda x: f"R$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             )
@@ -898,7 +984,7 @@ if modo_analise == "🏆 Dados Gerais":
                 use_container_width=True
             )
             
-            # Análise qualitativa
+            # Análise
             st.subheader("💡 Análise dos Dividend Yields")
             
             dy_medio = df_dy['Dividend Yield'].mean()
@@ -906,34 +992,31 @@ if modo_analise == "🏆 Dados Gerais":
             dy_minimo = df_dy['Dividend Yield'].min()
             
             col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                st.metric("Dividend Yield Médio", f"{dy_medio:.2f}%")
-            
-            with col2:
-                st.metric("Maior Dividend Yield", f"{dy_maximo:.2f}%")
-            
-            with col3:
-                st.metric("Menor Dividend Yield", f"{dy_minimo:.2f}%")
+            with col1: st.metric("Dividend Yield Médio", f"{dy_medio:.2f}%")
+            with col2: st.metric("Maior Dividend Yield", f"{dy_maximo:.2f}%")
+            with col3: st.metric("Menor Dividend Yield", f"{dy_minimo:.2f}%")
             
             st.info("""
-            **📈 Interpretação dos Dividend Yields:**
-            
-            - **Acima de 8%:** Yield muito alto - pode indicar oportunidades ou riscos elevados
-            - **Entre 4% e 8%:** Yield atrativo - potencialmente bom para renda
-            - **Abaixo de 4%:** Yield moderado - empresas em crescimento podem pagar menos dividendos
-            
-            ⚠️ **Atenção:** Dividend Yield alto nem sempre é bom - pode indicar que o preço da ação caiu devido a problemas na empresa.
+            **📈 Interpretação:**
+            - **Acima de 8%:** Yield muito alto - pode indicar oportunidades ou riscos
+            - **Entre 4%-8%:** Yield atrativo - bom para renda
+            - **Abaixo de 4%:** Yield moderado - empresas em crescimento
             """)
             
         else:
             st.warning("""
-            **ℹ️ Não foi possível calcular dividend yields**
+            **📝 Como obter dados de dividendos:**
             
-            Possíveis razões:
-            - Limitações na API do Yahoo Finance
-            - Empresas não pagam dividendos regularmente
-            - Dados históricos insuficientes
+            1. **Solução Imediata:** Aguarde alguns segundos e recarregue a página
+            2. **Solução Permanente:** Baixe o arquivo de dividendos históricos:
+            
+            ```python
+            # Arquivo CSV esperado: dividendos_historico.csv
+            # Colunas: Ticker,Data,Dividendo
+            # Exemplo: PETR4,2024-01-15,2.50
+            ```
+            
+            [📥 Download do modelo de arquivo](https://exemplo.com/dividendos_modelo.csv)
             """)
 
 # ==============================
@@ -2055,35 +2138,38 @@ elif modo_analise == "📈 Visão por Empresa":
                 """)
         
         with tab_simulacao:
-            st.subheader("💵 Simulação de Investimento")
-            st.write("**Simule um investimento de R$ 1.000,00 desde uma data específica até hoje**")
+            st.subheader("💵 Simulação de Investimento por Lotes")
+            st.write("**Simule a compra de lotes de ações desde uma data específica**")
             
             # Configuração da simulação
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
             
             with col1:
-                # CORREÇÃO: Usar formato brasileiro explicitamente
                 data_inicio = st.date_input(
-                    "Data do investimento inicial",
+                    "Data da compra",
                     min_value=datetime(2010, 1, 1),
                     max_value=datetime.now(),
                     value=datetime(2015, 1, 1),
-                    format="DD/MM/YYYY",  # FORÇAR FORMATO BRASILEIRO
-                    help="Data em que o investimento de R$ 1.000,00 seria feito (formato DD/MM/AAAA)"
+                    format="DD/MM/YYYY",
                 )
             
             with col2:
-                valor_investido = st.number_input(
-                    "Valor investido (R$)",
-                    min_value=100,
-                    value=1000,
-                    step=100,
-                    help="Valor inicial do investimento"
+                tamanho_lote = st.selectbox(
+                    "Tamanho do lote:",
+                    [100, 1000, 10000],
+                    index=0,
+                    format_func=lambda x: f"{x:,} ações".replace(",", ".")
                 )
+            
+            with col3:
+                st.write("**💡 Tipos de lote:**")
+                st.write("- **100 ações:** Lote padrão")
+                st.write("- **1.000 ações:** Lote intermediário") 
+                st.write("- **10.000 ações:** Lote grande")
             
             if st.button("🎯 Calcular Simulação", type="primary"):
                 with st.spinner("Calculando resultado do investimento..."):
-                    resultado = simular_investimento(ticker_selecionado, data_inicio, valor_investido)
+                    resultado = simular_investimento_lotes(ticker_selecionado, data_inicio, tamanho_lote)
                 
                 if resultado:
                     st.success("Simulação concluída!")
@@ -2093,33 +2179,32 @@ elif modo_analise == "📈 Visão por Empresa":
                     
                     with col1:
                         st.metric(
-                            "Valor Investido", 
-                            formatar_moeda_brasil_correta(valor_investido / 1000),
-                            help="Valor inicial do investimento"
+                            "Ações Compradas", 
+                            f"{resultado['quantidade_acoes']:,}".replace(",", "."),
+                            help="Quantidade de ações no lote"
                         )
                     
                     with col2:
                         st.metric(
-                            "Valor Atual da Posição", 
-                            formatar_moeda_brasil_correta(resultado['valor_investido_atual'] / 1000),
-                            delta=f"{resultado['rentabilidade_preco_percentual']:+.2f}%",
-                            help="Valor atual das ações (sem considerar dividendos)"
+                            "Valor Investido", 
+                            formatar_moeda_brasil_correta(resultado['valor_investido'] / 1000),
+                            help="Valor total investido na compra"
                         )
                     
                     with col3:
                         st.metric(
-                            "Total em Dividendos", 
-                            formatar_moeda_brasil_correta(resultado['total_dividendos_recebidos'] / 1000),
-                            delta=f"{resultado['rentabilidade_dividendos_percentual']:+.2f}%",
-                            help="Total de dividendos recebidos no período"
+                            "Valor Atual", 
+                            formatar_moeda_brasil_correta(resultado['valor_investido_atual'] / 1000),
+                            delta=f"{resultado['rentabilidade_preco_percentual']:+.2f}%",
+                            help="Valor atual do lote de ações"
                         )
                     
                     with col4:
                         st.metric(
-                            "Retorno Total", 
-                            formatar_moeda_brasil_correta(resultado['ganho_total'] / 1000),
-                            delta=f"{resultado['rentabilidade_total_percentual']:+.2f}%",
-                            help="Soma da valorização + dividendos"
+                            "Total Dividendos", 
+                            formatar_moeda_brasil_correta(resultado['total_dividendos_recebidos'] / 1000),
+                            delta=f"{resultado['rentabilidade_dividendos_percentual']:+.2f}%",
+                            help="Total de dividendos recebidos"
                         )
                     
                     # Detalhamento da simulação
@@ -2129,10 +2214,10 @@ elif modo_analise == "📈 Visão por Empresa":
                     
                     with col_det1:
                         st.write("**📈 Informações da Compra:**")
-                        st.write(f"- **Data da compra:** {resultado['data_compra'].strftime('%d/%m/%Y')}")  # Formato brasileiro
+                        st.write(f"- **Data da compra:** {resultado['data_compra'].strftime('%d/%m/%Y')}")
                         st.write(f"- **Preço de compra:** R$ {resultado['preco_compra']:.2f}".replace(".", ","))
-                        st.write(f"- **Quantidade de ações:** {resultado['quantidade_acoes']:.2f}")
-                        st.write(f"- **Valor investido:** {formatar_moeda_brasil_correta(valor_investido / 1000)}")
+                        st.write(f"- **Quantidade de ações:** {resultado['quantidade_acoes']:,}".replace(",", "."))
+                        st.write(f"- **Valor investido:** {formatar_moeda_brasil_correta(resultado['valor_investido'] / 1000)}")
                     
                     with col_det2:
                         st.write("**💰 Situação Atual:**")
@@ -2149,10 +2234,10 @@ elif modo_analise == "📈 Visão por Empresa":
                             st.success(f"""
                             **🎉 Excelente Investimento!**
                             
-                            Se você tivesse investido **{formatar_moeda_brasil_correta(valor_investido / 1000)}** em {ticker_selecionado} em {data_inicio.strftime('%d/%m/%Y')}:
+                            Se você tivesse comprado **{resultado['quantidade_acoes']:,} ações** de {ticker_selecionado} em {resultado['data_compra'].strftime('%d/%m/%Y')}:
                             
                             - 🔥 **Seu investimento teria mais que DOBRADO**
-                            - 💰 **Valor total hoje:** {formatar_moeda_brasil_correta((valor_investido + resultado['ganho_total']) / 1000)}
+                            - 💰 **Valor total hoje:** {formatar_moeda_brasil_correta((resultado['valor_investido'] + resultado['ganho_total']) / 1000)}
                             - 📈 **Retorno total:** {resultado['rentabilidade_total_percentual']:.2f}%
                             - 🎯 **Isso equivale a** {resultado['rentabilidade_total_percentual']/12:.2f}% ao ano em média
                             """)
@@ -2160,9 +2245,9 @@ elif modo_analise == "📈 Visão por Empresa":
                             st.success(f"""
                             **✅ Bom Investimento!**
                             
-                            Se você tivesse investido **{formatar_moeda_brasil_correta(valor_investido / 1000)}** em {ticker_selecionado} em {data_inicio.strftime('%d/%m/%Y')}:
+                            Se você tivesse comprado **{resultado['quantidade_acoes']:,} ações** de {ticker_selecionado} em {resultado['data_compra'].strftime('%d/%m/%Y')}:
                             
-                            - 💰 **Valor total hoje:** {formatar_moeda_brasil_correta((valor_investido + resultado['ganho_total']) / 1000)}
+                            - 💰 **Valor total hoje:** {formatar_moeda_brasil_correta((resultado['valor_investido'] + resultado['ganho_total']) / 1000)}
                             - 📈 **Retorno total:** {resultado['rentabilidade_total_percentual']:.2f}%
                             - 🎯 **Isso equivale a** {resultado['rentabilidade_total_percentual']/12:.2f}% ao ano em média
                             """)
@@ -2170,9 +2255,9 @@ elif modo_analise == "📈 Visão por Empresa":
                         st.warning(f"""
                         **⚠️ Investimento com Prejuízo**
                         
-                        Se você tivesse investido **{formatar_moeda_brasil_correta(valor_investido / 1000)}** em {ticker_selecionado} em {data_inicio.strftime('%d/%m/%Y')}:
+                        Se você tivesse comprado **{resultado['quantidade_acoes']:,} ações** de {ticker_selecionado} em {resultado['data_compra'].strftime('%d/%m/%Y')}:
                         
-                        - 💸 **Valor total hoje:** {formatar_moeda_brasil_correta((valor_investido + resultado['ganho_total']) / 1000)}
+                        - 💸 **Valor total hoje:** {formatar_moeda_brasil_correta((resultado['valor_investido'] + resultado['ganho_total']) / 1000)}
                         - 📉 **Prejuízo total:** {resultado['rentabilidade_total_percentual']:.2f}%
                         - ⏳ **Isso equivale a** {resultado['rentabilidade_total_percentual']/12:.2f}% ao ano em média
                         """)
