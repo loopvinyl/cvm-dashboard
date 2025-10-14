@@ -131,6 +131,9 @@ def buscar_dividendos_historicos(ticker):
         df_dividendos['Ano'] = df_dividendos['Data'].dt.year
         df_dividendos['Mes'] = df_dividendos['Data'].dt.month
         
+        # Ordenar por data
+        df_dividendos = df_dividendos.sort_values('Data')
+        
         return df_dividendos
         
     except Exception as e:
@@ -1917,12 +1920,14 @@ elif modo_analise == "📈 Visão por Empresa":
                     title=f'Dividendos por Ação - {ticker_selecionado}',
                     markers=True
                 )
+                
+                # CORREÇÃO: Usar update_layout em vez de update_yaxis
                 fig_dividendos.update_layout(
                     yaxis_title='Dividendo por Ação (R$)',
                     xaxis_title='Data',
-                    height=400
+                    height=400,
+                    yaxis=dict(tickformat=",.4f")  # CORREÇÃO AQUI
                 )
-                fig_dividendos.update_yaxis(tickformat=",.4f")
                 st.plotly_chart(fig_dividendos, use_container_width=True)
                 
                 # Dividendos por ano
@@ -2367,4 +2372,134 @@ elif modo_analise == "🏭 Análise Setorial":
                         )
                         st.plotly_chart(fig_setor_ebitda, use_container_width=True)
                 
-                # Tabela resumo da
+                # Tabela resumo da evolução do setor
+                st.subheader("📋 Resumo da Evolução do Setor - Principais Indicadores")
+                
+                # Formatar para porcentagem e valores monetários
+                def formatar_valor_setor(valor, coluna):
+                    if coluna in ['ROE', 'ROA', 'ROI', 'Margem Líquida', 'wacc', 'Percentual Capital Próprio']:
+                        return formatar_percentual_brasil(valor, 2) if pd.notna(valor) else "N/A"
+                    elif coluna in ['Lucro Econômico 1', 'EBITDA']:
+                        return formatar_moeda_brasil_correta(valor) if pd.notna(valor) else "N/A"
+                    else:
+                        return valor
+                
+                # Aplicar formatação
+                df_setor_formatado = df_setor_evolucao.copy()
+                for col in df_setor_formatado.columns:
+                    if col != 'Ano':
+                        df_setor_formatado[col] = df_setor_formatado[col].apply(lambda x: formatar_valor_setor(x, col))
+                
+                st.dataframe(df_setor_formatado, use_container_width=True)
+                
+                # Dispersão do setor
+                st.subheader("📊 Dispersão de Rentabilidade no Setor")
+                
+                if ano_selecionado in df_setor_todos_anos['Ano'].values:
+                    df_setor_ano = df_setor_todos_anos[df_setor_todos_anos['Ano'] == ano_selecionado]
+                    
+                    if not df_setor_ano.empty and 'ROE' in df_setor_ano.columns:
+                        fig_dispersao = px.box(df_setor_ano, y='ROE', 
+                                             title=f'Distribuição do ROE no Setor - {ano_selecionado}')
+                        fig_dispersao.update_layout(yaxis_tickformat=',.2%')
+                        st.plotly_chart(fig_dispersao, use_container_width=True)
+                
+            else:
+                st.info("ℹ️ São necessários dados de múltiplos anos para análise de evolução temporal do setor")
+
+# ==============================
+# SEÇÃO DE FÓRMULAS DOS INDICADORES
+# ==============================
+st.divider()
+st.header("📚 Fórmulas dos Indicadores (VELLANI, 2024)")
+
+formulas = {
+    "ROE (Return on Equity)": "Lucro Líquido ÷ Patrimônio Líquido Médio",
+    "ROA (Return on Assets)": "Resultado Operacional ÷ Ativo Total Médio", 
+    "ROI (Return on Investment)": "Resultado Operacional ÷ Investimento Médio",
+    "Investimento Médio": "Média[(Empréstimos Circulante + Empréstimos Não Circulante + PL) atual e anterior]",
+    "Margem Bruta": "Resultado Bruto ÷ Receita de Vendas",
+    "Margem Operacional": "Resultado Operacional ÷ Receita de Vendas",
+    "Margem Líquida": "Lucro Líquido ÷ Receita de Vendas",
+    "ki (Custo da Dívida)": "Despesas Financeiras ÷ Passivo Oneroso Médio",
+    "ke (Custo do Capital Próprio)": "Dividendos Pagos ÷ Patrimônio Líquido Médio",
+    "WACC": "(ki × % Capital Terceiros) + (ke × % Capital Próprio)",
+    "Lucro Econômico 1": "(ROI - WACC) × Investimento Médio",
+    "Lucro Econômico 2": "Resultado Operacional - (WACC × Investimento Médio)",
+    "EBITDA": "Resultado Operacional + Depreciação + Amortização",
+    "Valuation Lucro Econômico/SELIC": "Lucro Econômico ÷ (SELIC/100)",
+    "Percentual Capital Terceiros": "(Passivo Circulante + Não Circulante) ÷ Total Passivo",
+    "Percentual Capital Próprio": "Patrimônio Líquido ÷ Total Passivo",
+    "Caixa Líquido Atividades Operacionais": "Fluxo de caixa gerado/consumido pelas atividades operacionais"
+}
+
+# Exibir fórmulas em colunas
+col1, col2 = st.columns(2)
+
+with col1:
+    for i, (indicador, formula) in enumerate(formulas.items()):
+        if i < len(formulas) // 2:
+            with st.expander(f"**{indicador}**"):
+                st.write(f"`{formula}`")
+
+with col2:
+    for i, (indicador, formula) in enumerate(formulas.items()):
+        if i >= len(formulas) // 2:
+            with st.expander(f"**{indicador}**"):
+                st.write(f"`{formula}`")
+
+# ==============================
+# INFORMAÇÕES GERAIS
+# ==============================
+st.sidebar.divider()
+st.sidebar.header("ℹ️ Informações")
+st.sidebar.info(
+    "Este dashboard apresenta os principais indicadores financeiros "
+    "calculados conforme metodologia Vellani (2024)"
+)
+
+# Rodapé
+st.divider()
+st.caption(f"📊 Dashboard CVM - Indicadores Financeiros | Dados atualizados para {ano_selecionado} | Total de empresas na base: {df['Ticker'].nunique()}")
+
+# Adicionar informações sobre os cálculos
+with st.sidebar.expander("💡 Metodologia livro Vellani (2024)"):
+    st.write("""
+    **Cálculos Verificados:**
+    
+    **VERIFICAÇÃO:**
+    - Lucro Econômico 1 IGUAL ao Lucro Econômico 2 
+    
+     **Consistência Garantida:**
+    - ROI = Resultado Operacional ÷ Investimento Médio
+    - Lucro Econômico 1 = (ROI - WACC) × Investimento Médio
+    - Lucro Econômico 2 = Resultado Operacional - (WACC × Investimento Médio)
+    - **RESULTADO:** Lucro Econômico 1 = Lucro Econômico 2
+
+    **EBITDA Corrigido:**
+    - **EXCLUSIVAMENTE** usando a coluna 'Depreciação e amortização'
+    - **CORREÇÃO:** Usa valores absolutos para depreciação/amortização para garantir cálculo correto
+    - **FÓRMULA:** EBITDA = Resultado Operacional + |Depreciação e Amortização|
+
+    **Valuation Lucro Econômico/SELIC (CORRIGIDO):**
+    - **FÓRMULA CORRETA:** Valor da Empresa = Lucro Econômico ÷ (SELIC/100)
+    - **CONVERSÃO:** Valor em R$ mil convertido para R$ normais (×1000)
+    - **COTAÇÃO ESPERADA:** Valor da Empresa (R$) ÷ Número de Ações
+    - **COTAÇÃO:** Busca em tempo real via Yahoo Finance
+    - **ANÁLISE:** Comparação entre valuation calculado e cotação de mercado
+
+    **Novas Funcionalidades:**
+    - **FLUXO DE CAIXA OPERACIONAL:** Adicionada análise do Caixa Líquido de Atividades Operacionais
+    - **COMPARAÇÃO:** Caixa Operacional vs Lucro Líquido para análise de qualidade do lucro
+    - **EVOLUÇÃO TEMPORAL:** Gráficos de fluxo de caixa na análise histórica
+    - **DIVIDENDOS:** Histórico de dividendos e análise de dividend yield
+    - **SIMULAÇÃO DE INVESTIMENTO:** Simulação de R$ 1.000,00 desde data específica
+
+    **Dataset: dff_2010_2024**
+    - Período: 2010-2024 (15 anos)
+    - Empresas: 253 únicas
+    - Tickers: 317 únicos
+    - Setores: 43 categorias
+    - **ESCALA DOS VALORES NO DATASET:** R$ mil
+    - **NÚMERO DE AÇÕES:** Disponível apenas para 2024
+    """)
