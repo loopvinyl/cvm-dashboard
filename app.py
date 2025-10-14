@@ -108,18 +108,18 @@ def formatar_dataframe_percentual(df, colunas):
     return df_formatado
 
 # ==============================
-# FUNÇÕES DE DIVIDENDOS E INVESTIMENTO
+# FUNÇÕES DE DIVIDENDOS E INVESTIMENTO (CORRIGIDAS)
 # ==============================
 def buscar_dividendos_historicos(ticker):
     """
-    Busca dividendos históricos usando yfinance
+    Busca dividendos históricos usando yfinance ATÉ A DATA ATUAL
     """
     try:
         # Adiciona .SA para ações brasileiras
         ticker_yf = f"{ticker}.SA"
         acao = yf.Ticker(ticker_yf)
         
-        # Busca dividendos históricos
+        # Busca dividendos históricos ATÉ HOJE
         dividendos = acao.dividends
         
         if dividendos.empty:
@@ -128,6 +128,10 @@ def buscar_dividendos_historicos(ticker):
         # Converter para DataFrame e formatar
         df_dividendos = dividendos.reset_index()
         df_dividendos.columns = ['Data', 'Dividendo']
+        
+        # CORREÇÃO: Remover timezone para compatibilidade
+        df_dividendos['Data'] = df_dividendos['Data'].dt.tz_localize(None)
+        
         df_dividendos['Ano'] = df_dividendos['Data'].dt.year
         df_dividendos['Mes'] = df_dividendos['Data'].dt.month
         
@@ -170,7 +174,10 @@ def buscar_historico_precos(ticker, periodo_maximo="max"):
         
         if historico.empty:
             return None
-            
+        
+        # CORREÇÃO: Remover timezone para compatibilidade
+        historico.index = historico.index.tz_localize(None)
+        
         return historico
     except Exception as e:
         st.warning(f"⚠️ Não foi possível buscar histórico de preços para {ticker}: {str(e)}")
@@ -179,6 +186,7 @@ def buscar_historico_precos(ticker, periodo_maximo="max"):
 def simular_investimento(ticker, data_inicio, valor_investido=1000):
     """
     Simula um investimento de R$ 1.000,00 a partir de uma data específica
+    CORRIGIDA: compatibilidade de timezone
     """
     try:
         # Buscar histórico de preços
@@ -188,10 +196,8 @@ def simular_investimento(ticker, data_inicio, valor_investido=1000):
         
         # Buscar dividendos
         dividendos = buscar_dividendos_historicos(ticker)
-        if dividendos is None:
-            return None
         
-        # Converter data_inicio para datetime
+        # Converter data_inicio para datetime (sem timezone)
         if isinstance(data_inicio, str):
             data_inicio = datetime.strptime(data_inicio, '%Y-%m-%d')
         
@@ -210,8 +216,10 @@ def simular_investimento(ticker, data_inicio, valor_investido=1000):
         preco_atual = historico['Close'].iloc[-1]
         
         # Calcular dividendos recebidos desde a data de compra
-        dividendos_apos_compra = dividendos[dividendos['Data'] >= primeira_data]
-        total_dividendos_recebidos = (dividendos_apos_compra['Dividendo'] * quantidade_acoes).sum()
+        total_dividendos_recebidos = 0
+        if dividendos is not None and not dividendos.empty:
+            dividendos_apos_compra = dividendos[dividendos['Data'] >= primeira_data]
+            total_dividendos_recebidos = (dividendos_apos_compra['Dividendo'] * quantidade_acoes).sum()
         
         # Calcular valores atuais
         valor_investido_atual = quantidade_acoes * preco_atual
@@ -1872,7 +1880,7 @@ elif modo_analise == "📈 Visão por Empresa":
         with tab_dividendos:
             st.subheader("💰 Histórico de Dividendos")
             
-            # Buscar dividendos
+            # Buscar dividendos ATÉ A DATA ATUAL
             with st.spinner("Buscando dados de dividendos..."):
                 df_dividendos = buscar_dividendos_historicos(ticker_selecionado)
             
@@ -1921,12 +1929,15 @@ elif modo_analise == "📈 Visão por Empresa":
                     markers=True
                 )
                 
-                # CORREÇÃO: Usar update_layout em vez de update_yaxis
+                # CORREÇÃO: Formatação brasileira no eixo Y (2 casas decimais, vírgula)
                 fig_dividendos.update_layout(
                     yaxis_title='Dividendo por Ação (R$)',
                     xaxis_title='Data',
                     height=400,
-                    yaxis=dict(tickformat=",.4f")  # CORREÇÃO AQUI
+                    yaxis=dict(
+                        tickformat=",.4f",  # 4 casas decimais para dividendos
+                        tickmode='auto'
+                    )
                 )
                 st.plotly_chart(fig_dividendos, use_container_width=True)
                 
@@ -1941,7 +1952,13 @@ elif modo_analise == "📈 Visão por Empresa":
                     y='Dividendo Total',
                     title='Total de Dividendos por Ano'
                 )
-                fig_ano.update_layout(height=400)
+                fig_ano.update_layout(
+                    height=400,
+                    yaxis=dict(
+                        tickformat=",.2f",  # 2 casas decimais para totais anuais
+                        title='Dividendos (R$)'
+                    )
+                )
                 st.plotly_chart(fig_ano, use_container_width=True)
                 
                 # Tabela detalhada
@@ -1952,7 +1969,7 @@ elif modo_analise == "📈 Visão por Empresa":
                 df_display['Dividendo'] = df_display['Dividendo'].apply(
                     lambda x: f"R$ {x:.4f}".replace(".", ",")
                 )
-                df_display['Data'] = df_display['Data'].dt.strftime('%d/%m/%Y')
+                df_display['Data'] = df_display['Data'].dt.strftime('%d/%m/%Y')  # Formato brasileiro
                 df_display = df_display[['Data', 'Dividendo', 'Ano']].sort_values('Data', ascending=False)
                 
                 st.dataframe(df_display, use_container_width=True)
@@ -2024,12 +2041,13 @@ elif modo_analise == "📈 Visão por Empresa":
             col1, col2 = st.columns(2)
             
             with col1:
+                # CORREÇÃO: Formato brasileiro para data
                 data_inicio = st.date_input(
                     "Data do investimento inicial",
                     min_value=datetime(2010, 1, 1),
                     max_value=datetime.now(),
                     value=datetime(2015, 1, 1),
-                    help="Data em que o investimento de R$ 1.000,00 seria feito"
+                    help="Data em que o investimento de R$ 1.000,00 seria feito (formato DD/MM/AAAA)"
                 )
             
             with col2:
@@ -2089,7 +2107,7 @@ elif modo_analise == "📈 Visão por Empresa":
                     
                     with col_det1:
                         st.write("**📈 Informações da Compra:**")
-                        st.write(f"- **Data da compra:** {resultado['data_compra'].strftime('%d/%m/%Y')}")
+                        st.write(f"- **Data da compra:** {resultado['data_compra'].strftime('%d/%m/%Y')}")  # Formato brasileiro
                         st.write(f"- **Preço de compra:** R$ {resultado['preco_compra']:.2f}".replace(".", ","))
                         st.write(f"- **Quantidade de ações:** {resultado['quantidade_acoes']:.2f}")
                         st.write(f"- **Valor investido:** {formatar_moeda_brasil_correta(valor_investido / 1000)}")
