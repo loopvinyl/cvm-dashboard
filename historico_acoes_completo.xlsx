@@ -432,7 +432,7 @@ def calcular_ranking_dividendos(df_filtrado, periodo_anos=1, limite_empresas=50)
 # CONFIGURAÇÕES INICIAIS
 # ==============================
 st.set_page_config(page_title="Dashboard CVM - Indicadores", layout="wide")
-st.title("Dashboard CVM : Análise das Demonstrações Financeiras")
+st.title("Dashboard CVM: Análise das Demonstrações Financeiras")
 
 # ==============================
 # LEITURA DE DADOS CVM
@@ -2654,3 +2654,4 @@ with st.sidebar.expander("💡 Metodologia livro Vellani (2024)"):
     - Tickers únicos: 266 (dividendos), 293 (cotações)
     - Dados completos de empresas como PETR4, VALE3, ITUB4, etc.
     """)
+
