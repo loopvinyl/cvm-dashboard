@@ -1941,12 +1941,17 @@ elif modo_analise == "📈 Visão por Empresa":
                 )
                 
                 # CORREÇÃO MELHORADA: Formatação brasileira no eixo Y com vírgula
-              fig_dividendos.update_layout(
-                yaxis_title="Dividendos (R$)",
-                yaxis_tickprefix="R$ ",
-                yaxis_tickformat=", .2f"   # duas casas, separador brasileiro
+                fig_dividendos.update_layout(
+                    yaxis_title='Dividendo por Ação (R$)',
+                    xaxis_title='Data',
+                    height=400,
+                    yaxis=dict(
+                        tickformat=".4f",  # 4 casas decimais
+                        separatethousands=True,
+                        tickmode='auto'
+                    )
                 )
-
+                
                 # CORREÇÃO ADICIONAL: Formatar os ticks do eixo Y manualmente para usar vírgula
                 # Isso é necessário porque o plotly não suporta diretamente a substituição do ponto por vírgula
                 # Vamos atualizar os textos dos ticks para substituir ponto por vírgula
