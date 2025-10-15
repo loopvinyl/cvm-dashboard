@@ -1,5 +1,5 @@
 # ==============================================================
-# 📊 DASHBOARD CVM - Indicadores Financeiros (VERSÃO CONSOLIDADA - AJUSTADA COM NOVAS ABAS)
+# 📊 DASHBOARD CVM - Indicadores Financeiros (VERSÃO CONSOLIDADA - AJUSTADA V2)
 # ==============================================================
 import streamlit as st
 import pandas as pd
@@ -189,7 +189,7 @@ def calcular_valuation_lucro_economico_selic(lucro_economico, selic_percentual=1
         # e multiplicar por 1000 para converter o resultado final para R$
         valor_empresa = (lucro_economico / (selic_percentual / 100)) * 1000
         return valor_empresa
-    return None # 
+    return None #
 
 # ==============================
 # FUNÇÃO PARA PRÉ-SELEÇÃO DE TICKERS CONSISTENTES
@@ -291,14 +291,22 @@ def load_data():
     df = pd.read_excel(data_path)
     df.columns = [c.strip() for c in df.columns]
 
+    # **CORREÇÃO CRÍTICA: RENOMEAR SETOR**
+    # Renomeia 'SETOR_ATIV' para 'Setor' para compatibilidade com o restante do código
+    if 'SETOR_ATIV' in df.columns:
+        df.rename(columns={'SETOR_ATIV': 'Setor'}, inplace=True)
+    elif 'Setor' not in df.columns:
+         st.error("❌ A coluna de Setor ('Setor' ou 'SETOR_ATIV') não foi encontrada no arquivo Excel.")
+         st.stop()
+
     # =============================================================
-    # MAPEAMENTO EXATO DAS CONTAS (compatível com dff_2010_2024) [cite: 268]
+    # MAPEAMENTO EXATO DAS CONTAS (compatível com dff_2010_2024)
     # =============================================================
     # Ordenar por Ticker e Ano para garantir que shift() funcione corretamente
     df = df.sort_values(['Ticker', 'Ano']).reset_index(drop=True)
 
     # =============================================================
-    # CÁLCULOS DE MÉDIAS - CORRIGIDOS (VALORES JÁ ESTÃO EM R$ MIL) [cite: 268]
+    # CÁLCULOS DE MÉDIAS - CORRIGIDOS (VALORES JÁ ESTÃO EM R$ MIL)
     # =============================================================
     
     # 1. Ativo Médio 
@@ -329,10 +337,10 @@ def load_data():
         df.groupby("Ticker")["Empréstimos e Financiamentos - Não Circulante"].shift(1).fillna(0) +
         df.groupby("Ticker")["Patrimônio Líquido Consolidado"].shift(1).fillna(0)
     )
-    df["Investimento Médio"] = (df["Investimento Atual"] + df["Investimento Anterior"]) / 2 # [cite: 271]
+    df["Investimento Médio"] = (df["Investimento Atual"] + df["Investimento Anterior"]) / 2 #
 
     # =============================================================
-    # INDICADORES DE RENTABILIDATE - CORRIGIDOS [cite: 271]
+    # INDICADORES DE RENTABILIDATE - CORRIGIDOS
     # =============================================================
     
     # ROA = Resultado Antes do Resultado Financeiro e dos Tributos / Ativo Médio
@@ -354,10 +362,10 @@ def load_data():
         df["PL Médio"] > 0,
         df["Lucro/Prejuízo Consolidado do Período"] / df["PL Médio"],
         np.nan
-    ) # [cite: 273]
+    ) #
 
     # =============================================================
-    # MARGENS - ✅ TODOS CORRETOS [cite: 273]
+    # MARGENS - ✅ TODOS CORRETOS
     # =============================================================
     
     # Margem Bruta = Resultado Bruto / Receita
@@ -379,10 +387,10 @@ def load_data():
         df["Receita de Venda de Bens e/ou Serviços"] > 0,
         df["Lucro/Prejuízo Consolidado do Período"] / df["Receita de Venda de Bens e/ou Serviços"],
         np.nan
-    ) # [cite: 275]
+    ) #
 
     # =============================================================
-    # ESTRUTURA DE CAPITAL - ✅ TODOS CORRETOS [cite: 275]
+    # ESTRUTURA DE CAPITAL - ✅ TODOS CORRETOS
     # =============================================================
     
     # Total do Passivo = Passivo Circulante + Passivo Não Circulante + Patrimônio Líquido
@@ -404,10 +412,10 @@ def load_data():
         df["Total Passivo"] > 0,
         df["Patrimônio Líquido Consolidado"] / df["Total Passivo"],
         np.nan
-    ) # [cite: 277]
+    ) #
 
     # =============================================================
-    # CUSTO DE CAPITAL - ✅ TODOS CORRETOS [cite: 277]
+    # CUSTO DE CAPITAL - ✅ TODOS CORRETOS
     # =============================================================
     
     # ki (Custo da Dívida) = Despesas Financeiras / Passivo Oneroso Médio
@@ -433,7 +441,7 @@ def load_data():
     )
 
     # =============================================================
-    # EBITDA CORRIGIDO - USANDO SOMENTE 'Depreciação e amortização' [cite: 280]
+    # EBITDA CORRIGIDO - USANDO SOMENTE 'Depreciação e amortização'
     # =============================================================
     
     nome_coluna_da = None
@@ -454,7 +462,7 @@ def load_data():
         st.warning("⚠️ Dados de Depreciação/Amortização não encontrados. EBITDA calculado como aproximação do Resultado Operacional.")
 
     # =============================================================
-    # LUCRO ECONÔMICO - CORRIGIDOS CONFORME VELLANI 
+    # LUCRO ECONÔMICO - CORRIGIDOS CONFORME VELLANI
     # =============================================================
     # LUCRO ECONÔMICO 1 = (ROI - WACC) × Investimento Médio
     df["Lucro Econômico 1"] = np.where(
@@ -472,7 +480,7 @@ def load_data():
     df["Diferença Lucro Econômico"] = abs(df["Lucro Econômico 1"] - df["Lucro Econômico 2"])
 
     # =============================================================
-    # ANÁLISE DE ALAVANCAGEM - ✅ CORRETO 
+    # ANÁLISE DE ALAVANCAGEM - ✅ CORRETO
     # =============================================================
     # Verifica se a alavancagem é eficaz (ROE > ROA e ROE > ROI)
     df["Alavancagem Eficaz"] = np.where(
@@ -493,6 +501,7 @@ tickers_consistentes = None
 
 # 2. Obter lista de Tickers e Setores
 lista_tickers = sorted(df_cvm['Ticker'].unique())
+# Usando 'Setor' após a renomeação em load_data()
 lista_setores = sorted(df_cvm['Setor'].unique())
 
 # ==============================
@@ -545,9 +554,11 @@ if modo_analise == "🏠 Dados Gerais e Ranking":
     if tickers_consistentes is not None and 'df_ranking' in st.session_state and not st.session_state['df_ranking'].empty:
         st.subheader("🏆 Top 10 Tickers com Maior DY Médio (10 Anos) e Consistência")
         
-        # Filtrar por setor se aplicável
+        # Filtrar por setor se aplicável (o df_ranking precisa ter a coluna 'Setor')
         df_ranking_exibicao = st.session_state['df_ranking'].copy()
         if setor_selecionado != 'Todos':
+            # Se o ranking não tiver a coluna Setor, pode dar erro aqui. 
+            # Assumindo que a função calcular_ranking_dividendos anexaria o Setor (que agora é Setor_ATIV)
             df_ranking_exibicao = df_ranking_exibicao[df_ranking_exibicao['Setor'] == setor_selecionado]
             
         df_ranking_exibicao = df_ranking_exibicao.sort_values("DY Médio 10A (%)", ascending=False).head(10).reset_index(drop=True)
@@ -600,7 +611,8 @@ elif modo_analise == "🔍 Visão por Empresa":
         with col_nome:
             st.metric("Nome da Empresa", dados_cotacao.get('nome', 'N/A'))
         with col_setor:
-            st.metric("Setor", dados_cotacao.get('setor', 'N/A'))
+            # Esta métrica usa a informação do Yahoo Finance, que é 'sector'
+            st.metric("Setor (YF)", dados_cotacao.get('setor', 'N/A'))
         with col_cap:
             st.metric("Valor de Mercado", formatar_moeda_brasil_correta(dados_cotacao.get('market_cap') / 1000, 0) if dados_cotacao.get('market_cap') else "R$ -")
         with col_cotacao:
@@ -777,9 +789,10 @@ elif modo_analise == "🏭 Análise Setorial":
     # 1. Filtrar pelo ano selecionado
     df_ano = df_cvm[df_cvm['Ano'] == ano_setorial].copy()
     
-    # 2. Calcular a média do indicador por Setor
+    # 2. Calcular a média do indicador por Setor (agora renomeado corretamente)
     # Usar .median() é mais robusto para métricas percentuais
     df_setorial = df_ano.groupby('Setor')[indicador_setorial].median().sort_values(ascending=False).reset_index()
+    # A coluna de setor já vem como 'Setor' após o groupby
     df_setorial.columns = ['Setor', 'Valor Médio']
 
     if df_setorial.empty:
@@ -840,12 +853,12 @@ elif modo_analise == "📈 Simulação de Investimento":
         valor_por_ticker = valor_total / len(df_top10)
         
         # Simulação real de mercado (não implementada completamente no snippet)
-        # O código original no app.py_incompleto.txt tinha uma simulação mais detalhada
         
         # Simulando resultados para demonstração:
         for index, row in df_top10.iterrows():
             ticker = row['Ticker']
-            setor = row['Setor']
+            # Usa 'Setor' que foi renomeado de SETOR_ATIV ou veio do df_ranking
+            setor = row['Setor'] 
             
             # Buscando cotação inicial (aproximação - o código completo usaria yfinance.download)
             try:
