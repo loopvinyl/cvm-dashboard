@@ -178,7 +178,7 @@ def buscar_dividendos_historicos(ticker):
         return None # Falha silenciosamente
 
 # ==============================
-# NOVO: FUNÇÃO PARA PRÉ-SELEÇÃO DE TICKERS CONSISTENTES
+# FUNÇÃO PARA PRÉ-SELEÇÃO DE TICKERS CONSISTENTES
 # ==============================
 @st.cache_data(ttl=86400) # Cache por 24 horas
 def calcular_tickers_consistentes(df_cvm, ano_minimo_cvm=2010):
@@ -186,13 +186,14 @@ def calcular_tickers_consistentes(df_cvm, ano_minimo_cvm=2010):
     Identifica tickers que pagaram dividendos em TODOS os anos
     do período CVM (2010) até o ano fiscal mais recente.
     """
-    st.info("🔎 **Pré-filtrando:** Buscando tickers que pagaram dividendos anualmente desde 2010.")
+    st.info("🔎 **Pré-filtrando:** Buscando tickers que pagaram dividendos anualmente desde 2010. Esta etapa pode demorar.")
     
     # 1. Definir o período de análise CVM
     ano_maximo_cvm = df_cvm['Ano'].max()
     anos_necessarios = list(range(ano_minimo_cvm, ano_maximo_cvm + 1))
     
-    tickers_validos = df_cvm['Ticker'].unique()
+    # Reduzir a lista de tickers a serem verificados (apenas os do último ano)
+    tickers_validos = df_cvm[df_cvm['Ano'] == ano_maximo_cvm]['Ticker'].unique()
     
     tickers_consistentes = []
     
@@ -205,6 +206,7 @@ def calcular_tickers_consistentes(df_cvm, ano_minimo_cvm=2010):
         if df_dividendos is not None and not df_dividendos.empty:
             
             # Anos em que houve pagamento de dividendo para este ticker
+            # Filtro para garantir que a coluna 'Dividendo' exista e seja > 0
             anos_com_pagamento = df_dividendos[df_dividendos['Dividendo'] > 0]['Ano'].unique()
             
             # Verificar se o ticker pagou em todos os anos necessários
@@ -220,7 +222,7 @@ def calcular_tickers_consistentes(df_cvm, ano_minimo_cvm=2010):
     return tickers_consistentes
 
 # ==============================
-# NOVO: SISTEMA DE RANKING DE DIVIDENDOS OTIMIZADO (Foco em DY de 10 Anos)
+# SISTEMA DE RANKING DE DIVIDENDOS OTIMIZADO (Foco em DY de 10 Anos)
 # ==============================
 def calcular_ranking_dividendos(tickers_consistentes, periodo_dy_anos=10):
     """
@@ -245,12 +247,10 @@ def calcular_ranking_dividendos(tickers_consistentes, periodo_dy_anos=10):
             # 1. Buscar Cotação e Setor
             dados_cotacao = buscar_cotacao_atual(ticker)
             
-            # 2. Buscar Histórico de Preços (para os últimos 10 anos)
-            # Como a busca 'max' pode ser muito grande, buscamos um período mais restrito.
+            # 2. Buscar Histórico de Preços e Dividendos
             data_inicio = datetime.now() - timedelta(days=365 * periodo_dy_anos)
             
-            # Buscando todo o histórico e filtrando localmente para ser mais rápido,
-            # já que o yfinance busca por período de calendário, não dias úteis exatos
+            # Buscando todo o histórico (max) para garantir preço final do ano
             df_historico_precos = buscar_historico_precos(ticker, "max")
             df_dividendos = buscar_dividendos_historicos(ticker)
             
@@ -273,9 +273,16 @@ def calcular_ranking_dividendos(tickers_consistentes, periodo_dy_anos=10):
                     # 3. Calcular o DY anual (Soma Dividendo Anual / Preço Final do Ano)
                     dy_anuais = []
                     for ano, dividendo_total in df_dividendos_anual.items():
-                        if ano in precos_anuais.index.year:
+                        # Usar o preço de fechamento do ano fiscal ANTERIOR ao pagamento
+                        # Para o cálculo de DY, geralmente se usa o preço de fechamento do ano em questão, 
+                        # ou o preço médio, mas aqui usaremos o preço final do ano para simplificar.
+                        
+                        # Tenta encontrar o preço de fechamento no ano fiscal
+                        ano_fiscal_end = datetime(ano, 12, 31)
+                        if ano_fiscal_end.year in precos_anuais.index.year:
                             preco_final = precos_anuais[precos_anuais.index.year == ano].iloc[0]
                             if preco_final > 0:
+                                # DY = (Dividendo total do ano) / (Preço final do ano)
                                 dy_anual = (dividendo_total / preco_final) * 100
                                 dy_anuais.append(dy_anual)
                     
@@ -303,7 +310,7 @@ def calcular_ranking_dividendos(tickers_consistentes, periodo_dy_anos=10):
     return pd.DataFrame(dados_ranking).fillna(0) 
 
 # ==============================
-# FUNÇÕES DE VALUATION E SIMULAÇÃO (Mantidas)
+# FUNÇÕES DE VALUATION E SIMULAÇÃO (Modificada)
 # ==============================
 def calcular_estatisticas_dividendos(df_dividendos):
     """
@@ -344,9 +351,12 @@ def buscar_historico_precos(ticker, periodo_maximo="max"):
     except:
         return None # Falha silenciosamente
 
+# MODIFICAÇÃO: A função agora retorna um dicionário com flag 'sem_dividendos' ou 'error'
 def simular_investimento_lotes(ticker, data_inicio, quantidade_acoes=100):
     """
-    Simula um investimento por quantidade de ações (lotes)
+    Simula um investimento por quantidade de ações (lotes).
+    Retorna None se os dados de preço (histórico) não puderem ser obtidos.
+    Retorna um dicionário com 'error': True se ocorrer um erro inesperado.
     """
     try:
         if isinstance(data_inicio, date) and not isinstance(data_inicio, datetime):
@@ -354,43 +364,53 @@ def simular_investimento_lotes(ticker, data_inicio, quantidade_acoes=100):
         elif isinstance(data_inicio, str):
              data_inicio = datetime.strptime(data_inicio, '%Y-%m-%d')
         
-        # Buscar histórico de preços
+        # 1. Buscar histórico de preços
         historico = buscar_historico_precos(ticker, "max")
         if historico is None:
-            return None
+            return None # FALHA CRÍTICA: SEM DADOS DE PREÇO
         
-        # Buscar dividendos
+        # 2. Buscar dividendos
         dividendos = buscar_dividendos_historicos(ticker)
         
-        # Encontrar o primeiro preço disponível após a data de início
+        # 3. Encontrar o primeiro preço disponível após a data de início
         precos_apos_inicio = historico[historico.index >= data_inicio]
         if precos_apos_inicio.empty:
-            return None
+            return None # FALHA CRÍTICA: NENHUM DADO DE PREÇO ENCONTRADO NO PERÍODO
         
         primeira_data = precos_apos_inicio.index[0]
         preco_compra = precos_apos_inicio['Close'].iloc[0]
         
-        # Calcular valor investido baseado na quantidade de ações
+        # Se o preço de compra for zero, abortar para evitar divisão por zero
+        if preco_compra == 0:
+            return {'error': True, 'message': "Preço de compra zero, simulação impossível."}
+        
+        # 4. Calcular valor investido baseado na quantidade de ações
         valor_investido = quantidade_acoes * preco_compra
         
-        # Preço atual (último preço disponível)
+        # 5. Preço atual (último preço disponível)
         preco_atual = historico['Close'].iloc[-1]
         
-        # Calcular dividendos recebidos desde a data de compra
+        # 6. Calcular dividendos recebidos desde a data de compra
         total_dividendos_recebidos = 0
+        
+        # Se houver dados de dividendos
         if dividendos is not None and not dividendos.empty:
             dividendos_apos_compra = dividendos[dividendos['Data'] >= primeira_data]
             total_dividendos_recebidos = (dividendos_apos_compra['Dividendo'] * quantidade_acoes).sum()
         
-        # Calcular valores atuais
+        # 7. Calcular valores atuais
         valor_investido_atual = quantidade_acoes * preco_atual
         ganho_preco = valor_investido_atual - valor_investido
+        # O Ganho Total inclui o Ganho de Preço + Dividendos (que será 0 se não houver proventos)
         ganho_total = ganho_preco + total_dividendos_recebidos
         
-        # Calcular percentuais
+        # 8. Calcular percentuais
         rentabilidade_dividendos_percentual = (total_dividendos_recebidos / valor_investido) * 100
         rentabilidade_preco_percentual = (ganho_preco / valor_investido) * 100
         rentabilidade_total_percentual = (ganho_total / valor_investido) * 100
+        
+        # Adicionar uma flag para indicar se os dividendos foram zero
+        sem_dividendos = total_dividendos_recebidos == 0
         
         return {
             'data_compra': primeira_data,
@@ -404,11 +424,13 @@ def simular_investimento_lotes(ticker, data_inicio, quantidade_acoes=100):
             'ganho_total': ganho_total,
             'rentabilidade_dividendos_percentual': rentabilidade_dividendos_percentual,
             'rentabilidade_preco_percentual': rentabilidade_preco_percentual,
-            'rentabilidade_total_percentual': rentabilidade_total_percentual
+            'rentabilidade_total_percentual': rentabilidade_total_percentual,
+            'sem_dividendos': sem_dividendos # NOVA FLAG
         }
         
     except Exception as e:
-        return None
+        # Erro inesperado no meio do cálculo
+        return {'error': True, 'message': f"Erro inesperado no cálculo: {e}"}
 
 def calcular_valuation_lucro_economico_selic(lucro_economico, selic_percentual=15):
     """
@@ -491,10 +513,6 @@ def load_data():
     df = pd.read_excel(data_path)
     df.columns = [c.strip() for c in df.columns]
 
-    # ... [O restante do seu código de cálculo de Médias, ROA, ROE, Margens, WACC, Lucro Econômico]
-    # (Mantido como estava na versão anterior, sem repetição aqui por brevidade)
-    # Certifique-se de que este bloco está completo no seu script.
-    
     # =============================================================
     # MAPEAMENTO EXATO DAS CONTAS (compatível com dff_2010_2024)
     # =============================================================
@@ -761,7 +779,7 @@ if modo_analise == "🏆 Dados Gerais":
     
     # Abas para diferentes rankings
     rank_tab1, rank_tab2, rank_tab3, rank_tab4, rank_tab5 = st.tabs([
-        "📈 Rentabilidade", "💰 Lucro e Receita", "🏛️ Solidez", "📊 Eficiência", "👑 Dividendos Consistentes"
+        "📈 Rentabilidade", "💰 Lucro, Receita e Caixa", "🏛️ Solidez", "📊 Eficiência", "👑 Dividendos Consistentes"
     ])
     
     # --- RANKING DE RENTABILIDADE (Mantido) ---
@@ -808,8 +826,32 @@ if modo_analise == "🏆 Dados Gerais":
         else:
             st.warning("Não há dados suficientes para exibir a tabela consolidada")
     
-    # --- RANKING DE LUCRO E RECEITA (Mantido) ---
+    # --- RANKING DE LUCRO, RECEITA E CAIXA (MODIFICADO) ---
     with rank_tab2:
+        
+        # --- NOVO RANKING DE CAIXA OPERACIONAL (TOP 13) ---
+        st.subheader("🥇 Top 13 Empresas por Geração de Caixa Operacional")
+        
+        # Coluna do FCO no seu Excel
+        coluna_fco = "Caixa Líquido Atividades Operacionais"
+        
+        fco_ranking = df_filtrado[df_filtrado[coluna_fco].notna()].nlargest(13, coluna_fco)[["Ticker", "SETOR_ATIV", coluna_fco]]
+        
+        if not fco_ranking.empty:
+            fco_ranking["Caixa Op (R$)"] = fco_ranking[coluna_fco] * 1000 / 1e9  # Converter R$ mil para R$ bilhões
+            
+            fig_fco_rank = px.bar(fco_ranking, x="Ticker", y="Caixa Op (R$)", color="SETOR_ATIV",
+                                  title="Ranking de Caixa Líquido de Atividades Operacionais (R$ Bilhões)")
+            fig_fco_rank.update_layout(yaxis_tickformat=',.2f')
+            st.plotly_chart(fig_fco_rank, use_container_width=True)
+            
+            fco_ranking["Caixa Operacional"] = fco_ranking[coluna_fco].apply(formatar_moeda_brasil_correta)
+            st.dataframe(fco_ranking[["Ticker", "SETOR_ATIV", "Caixa Operacional"]], use_container_width=True)
+        else:
+            st.warning("Não há dados de Caixa Líquido Atividades Operacionais disponíveis para ranking.")
+
+        st.markdown("---")
+        
         col1, col2 = st.columns(2)
         
         with col1:
@@ -907,7 +949,7 @@ if modo_analise == "🏆 Dados Gerais":
             else:
                 st.warning("Não há dados de WACC disponíveis para ranking")
 
-    # --- RANKING DE DIVIDENDOS CONSISTENTES (NOVA LÓGICA) ---
+    # --- RANKING DE DIVIDENDOS CONSISTENTES (Mantido) ---
     with rank_tab5:
         st.header("👑 Top Pagadores de Dividendos Consistentes")
 
@@ -1013,7 +1055,7 @@ elif modo_analise == "📈 Visão por Empresa":
         st.markdown("---")
         st.subheader("Lucro e Caixa")
         
-        col_lucro, col_ebitda, col_le = st.columns(3)
+        col_lucro, col_ebitda, col_le, col_fco_anual = st.columns(4)
         
         with col_lucro:
             st.metric("Lucro Líquido", formatar_moeda_brasil_correta(row["Lucro/Prejuízo Consolidado do Período"], 2))
@@ -1021,6 +1063,9 @@ elif modo_analise == "📈 Visão por Empresa":
         with col_ebitda:
             st.metric("EBITDA", formatar_moeda_brasil_correta(row["EBITDA"], 2))
             
+        with col_fco_anual:
+            st.metric("Caixa Operacional", formatar_moeda_brasil_correta(row["Caixa Líquido Atividades Operacionais"], 2))
+
         with col_le:
             le_valor = row["Lucro Econômico 2"]
             le_delta = row["Diferença Lucro Econômico"]
@@ -1096,18 +1141,18 @@ elif modo_analise == "📈 Visão por Empresa":
             fig_margem.update_layout(yaxis_tickformat=',.2%')
             st.plotly_chart(fig_margem, use_container_width=True)
             
-            # Gráfico de Lucro Líquido vs EBITDA
+            # Gráfico de Lucro Líquido vs EBITDA vs FCO
             st.markdown("---")
-            st.subheader("Lucro Líquido e EBITDA (R$ Mil)")
-            df_lucro_ebitda = df_historico_filtrado[["Ano", "Lucro/Prejuízo Consolidado do Período", "EBITDA"]].copy()
-            df_lucro_ebitda.columns = ["Ano", "Lucro Líquido (R$ mil)", "EBITDA (R$ mil)"]
-            df_lucro_ebitda_melt = df_lucro_ebitda.melt(
+            st.subheader("Lucro Líquido, EBITDA e Caixa Operacional (R$ Mil)")
+            df_lucro_ebitda_fco = df_historico_filtrado[["Ano", "Lucro/Prejuízo Consolidado do Período", "EBITDA", "Caixa Líquido Atividades Operacionais"]].copy()
+            df_lucro_ebitda_fco.columns = ["Ano", "Lucro Líquido (R$ mil)", "EBITDA (R$ mil)", "Caixa Op (R$ mil)"]
+            df_lucro_ebitda_fco_melt = df_lucro_ebitda_fco.melt(
                 id_vars="Ano", var_name="Conta", value_name="Valor"
             )
-            fig_lucro_ebitda = px.bar(df_lucro_ebitda_melt, x="Ano", y="Valor", color="Conta", barmode="group",
-                                      title="Evolução Anual do Lucro Líquido e EBITDA")
-            fig_lucro_ebitda.update_layout(yaxis_tickformat=',.0f')
-            st.plotly_chart(fig_lucro_ebitda, use_container_width=True)
+            fig_lucro_ebitda_fco = px.bar(df_lucro_ebitda_fco_melt, x="Ano", y="Valor", color="Conta", barmode="group",
+                                      title="Evolução Anual do Lucro Líquido, EBITDA e FCO")
+            fig_lucro_ebitda_fco.update_layout(yaxis_tickformat=',.0f')
+            st.plotly_chart(fig_lucro_ebitda_fco, use_container_width=True)
             
         else:
             st.info("Filtro de anos muito restritivo. Ajuste o seletor.")
@@ -1211,7 +1256,14 @@ elif modo_analise == "📈 Visão por Empresa":
                 lote_selecionado
             )
             
-            if resultados:
+            # Modificação da lógica de exibição para tratar a nova flag 'error'
+            if resultados and 'error' in resultados:
+                st.error(f"❌ Não foi possível realizar a simulação. **Detalhes:** {resultados['message']}")
+            elif resultados:
+                
+                # Exibe a nota sobre a falta de dividendos, se for o caso
+                if resultados.get('sem_dividendos', False):
+                    st.warning("⚠️ **Nota:** Nenhum provento (dividendo/JCP) foi distribuído ou registrado pelo Yahoo Finance para este ticker no período selecionado. O Ganho Total reflete apenas a valorização/desvalorização da cotação.")
                 
                 col_investido, col_atual, col_dividendo, col_ganho_total = st.columns(4)
                 
@@ -1246,8 +1298,10 @@ elif modo_analise == "📈 Visão por Empresa":
                     st.metric("Rentabilidade Total", f"{resultados['rentabilidade_total_percentual']:,.2f}%".replace(".", ","))
                 
             else:
-                st.error("""
-❌ Esta empresa não distribuiu proventos
+                # Caso a função retorne None (falha crítica - falta de dados de preço)
+                st.error(f"""
+❌ Não foi possível realizar a simulação.
+**Possíveis causas:** Dados de preço da ação não foram encontrados pelo Yahoo Finance para o período selecionado, a ação não possui histórico de negociação na bolsa ou a data de compra está fora do período disponível.
 """)
 
 # ==============================
