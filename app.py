@@ -1247,7 +1247,7 @@ elif modo_analise == "📈 Visão por Empresa":
                 
             else:
                 st.error("""
-❌ Não foi possível realizar a simulação
+❌ Esta empresa não distribuiu proventos
 """)
 
 # ==============================
