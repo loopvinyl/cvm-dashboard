@@ -1,5 +1,5 @@
 # ==============================================================
-# 📊 DASHBOARD CVM - Indicadores Financeiros (VERSÃO COMPLETA E FINAL)
+# 📊 DASHBOARD CVM - Indicadores Financeiros (VERSÃO CONSOLIDADA - FOCO EM CONSISTÊNCIA)
 # ==============================================================
 import streamlit as st
 import pandas as pd
@@ -150,6 +150,7 @@ def buscar_dividendos_historicos(ticker):
         acao = yf.Ticker(ticker_yf)
         
         # Busca dividendos históricos ATÉ HOJE
+        # 'max' busca todos os dados disponíveis
         dividendos = acao.dividends
         
         if dividendos.empty:
@@ -176,6 +177,134 @@ def buscar_dividendos_historicos(ticker):
     except:
         return None # Falha silenciosamente
 
+# ==============================
+# NOVO: FUNÇÃO PARA PRÉ-SELEÇÃO DE TICKERS CONSISTENTES
+# ==============================
+@st.cache_data(ttl=86400) # Cache por 24 horas
+def calcular_tickers_consistentes(df_cvm, ano_minimo_cvm=2010):
+    """
+    Identifica tickers que pagaram dividendos em TODOS os anos
+    do período CVM (2010) até o ano fiscal mais recente.
+    """
+    st.info("🔎 **Pré-filtrando:** Buscando tickers que pagaram dividendos anualmente desde 2010.")
+    
+    # 1. Definir o período de análise CVM
+    ano_maximo_cvm = df_cvm['Ano'].max()
+    anos_necessarios = list(range(ano_minimo_cvm, ano_maximo_cvm + 1))
+    
+    tickers_validos = df_cvm['Ticker'].unique()
+    
+    tickers_consistentes = []
+    
+    total_steps = len(tickers_validos)
+    progress_bar = st.progress(0, text="Verificando consistência anual de dividendos...")
+    
+    for i, ticker in enumerate(tickers_validos):
+        df_dividendos = buscar_dividendos_historicos(ticker)
+        
+        if df_dividendos is not None and not df_dividendos.empty:
+            
+            # Anos em que houve pagamento de dividendo para este ticker
+            anos_com_pagamento = df_dividendos[df_dividendos['Dividendo'] > 0]['Ano'].unique()
+            
+            # Verificar se o ticker pagou em todos os anos necessários
+            if all(ano in anos_com_pagamento for ano in anos_necessarios):
+                tickers_consistentes.append(ticker)
+        
+        time.sleep(0.01) # Pequeno atraso para não travar a barra
+        percent_complete = (i + 1) / total_steps
+        progress_bar.progress(percent_complete, text=f"Verificando {ticker} ({i+1}/{total_steps})...")
+
+    progress_bar.empty()
+    st.success(f"✅ {len(tickers_consistentes)} tickers identificados com pagamento anual consistente desde {ano_minimo_cvm}.")
+    return tickers_consistentes
+
+# ==============================
+# NOVO: SISTEMA DE RANKING DE DIVIDENDOS OTIMIZADO (Foco em DY de 10 Anos)
+# ==============================
+def calcular_ranking_dividendos(tickers_consistentes, periodo_dy_anos=10):
+    """
+    Calcula o Dividend Yield médio dos últimos 10 anos (ou período disponível)
+    para o conjunto de tickers consistentes e ranqueia o Top 10.
+    """
+    
+    dados_ranking = []
+    
+    if not tickers_consistentes:
+        return pd.DataFrame()
+
+    st.warning(f"⚠️ **Busca em tempo real (yfinance):** Calculando DY médio de {periodo_dy_anos} anos para {len(tickers_consistentes)} tickers consistentes.")
+
+    with st.spinner(f"Calculando DY médio para {len(tickers_consistentes)} empresas..."):
+        
+        total_steps = len(tickers_consistentes)
+        progress_bar = st.progress(0, text="Buscando dados de mercado...")
+        
+        for i, ticker in enumerate(tickers_consistentes):
+            
+            # 1. Buscar Cotação e Setor
+            dados_cotacao = buscar_cotacao_atual(ticker)
+            
+            # 2. Buscar Histórico de Preços (para os últimos 10 anos)
+            # Como a busca 'max' pode ser muito grande, buscamos um período mais restrito.
+            data_inicio = datetime.now() - timedelta(days=365 * periodo_dy_anos)
+            
+            # Buscando todo o histórico e filtrando localmente para ser mais rápido,
+            # já que o yfinance busca por período de calendário, não dias úteis exatos
+            df_historico_precos = buscar_historico_precos(ticker, "max")
+            df_dividendos = buscar_dividendos_historicos(ticker)
+            
+            dy_medio_10a = None
+            
+            if dados_cotacao and df_historico_precos is not None and df_dividendos is not None and not df_dividendos.empty:
+                
+                # Filtrar histórico e dividendos para os últimos 10 anos (ou menos se não houver dados)
+                df_historico_precos_filtrado = df_historico_precos[df_historico_precos.index >= data_inicio]
+                df_dividendos_filtrado = df_dividendos[df_dividendos['Data'] >= data_inicio]
+                
+                if not df_historico_precos_filtrado.empty and not df_dividendos_filtrado.empty:
+                    
+                    # 1. Agrupar dividendos por ano
+                    df_dividendos_anual = df_dividendos_filtrado.groupby(df_dividendos_filtrado['Data'].dt.year)['Dividendo'].sum()
+                    
+                    # 2. Pegar o preço de fechamento do final de cada ano
+                    precos_anuais = df_historico_precos_filtrado.resample('Y').last()['Close'].dropna()
+                    
+                    # 3. Calcular o DY anual (Soma Dividendo Anual / Preço Final do Ano)
+                    dy_anuais = []
+                    for ano, dividendo_total in df_dividendos_anual.items():
+                        if ano in precos_anuais.index.year:
+                            preco_final = precos_anuais[precos_anuais.index.year == ano].iloc[0]
+                            if preco_final > 0:
+                                dy_anual = (dividendo_total / preco_final) * 100
+                                dy_anuais.append(dy_anual)
+                    
+                    if dy_anuais:
+                        dy_medio_10a = np.mean(dy_anuais)
+            
+            # Incluir dados no ranking
+            if dados_cotacao is not None:
+                dados_ranking.append({
+                    'Ticker': ticker,
+                    'Setor': dados_cotacao.get('setor', 'N/A'),
+                    'Cotação Atual': dados_cotacao['cotacao'],
+                    f'DY Médio ({periodo_dy_anos}A)': dy_medio_10a
+                })
+            
+            # Atraso para evitar rate limit
+            time.sleep(0.5) 
+            
+            # Atualiza a barra de progresso
+            percent_complete = (i + 1) / total_steps
+            progress_bar.progress(percent_complete, text=f"Buscando {ticker} ({i+1}/{total_steps})...")
+
+        progress_bar.empty()
+    
+    return pd.DataFrame(dados_ranking).fillna(0) 
+
+# ==============================
+# FUNÇÕES DE VALUATION E SIMULAÇÃO (Mantidas)
+# ==============================
 def calcular_estatisticas_dividendos(df_dividendos):
     """
     Calcula estatísticas dos dividendos
@@ -281,165 +410,6 @@ def simular_investimento_lotes(ticker, data_inicio, quantidade_acoes=100):
     except Exception as e:
         return None
 
-# ==============================
-# NOVAS FUNÇÕES PARA ANÁLISE DE CONSISTÊNCIA E CRESCIMENTO DE DIVIDENDOS
-# ==============================
-def calcular_consistencia_dividendos(df_dividendos_hist):
-    """
-    Calcula o número de anos consecutivos que a empresa pagou dividendos (desde 2010).
-    """
-    if df_dividendos_hist is None or df_dividendos_hist.empty:
-        return 0, 0
-    
-    # 1. Agrupar por ano
-    df_anual = df_dividendos_hist.groupby('Ano')['Dividendo'].sum().reset_index()
-    # 2. Filtrar anos com pagamento (valor > 0)
-    anos_com_pagamento = df_anual[df_anual['Dividendo'] > 0]['Ano'].unique()
-    
-    total_anos_pagando = len(anos_com_pagamento)
-    
-    # 2. Calcular Anos consecutivos
-    if total_anos_pagando == 0:
-        return total_anos_pagando, 0
-    
-    anos_pagos_sorted = sorted(anos_com_pagamento)
-    
-    max_consecutive = 0
-    current_consecutive = 0
-    
-    for i in range(len(anos_pagos_sorted)):
-        if i == 0:
-            current_consecutive = 1
-        # Verifica se o ano atual é o ano anterior + 1
-        elif anos_pagos_sorted[i] == anos_pagos_sorted[i-1] + 1:
-            current_consecutive += 1
-        else:
-            max_consecutive = max(max_consecutive, current_consecutive)
-            current_consecutive = 1
-            
-    # Última verificação após o loop
-    max_consecutive = max(max_consecutive, current_consecutive)
-    
-    return total_anos_pagando, max_consecutive
-
-def calcular_crescimento_dividendos(df_dividendos_hist):
-    """
-    Calcula o crescimento anual composto (CAGR) do dividendo anual (desde 2010).
-    """
-    if df_dividendos_hist is None or df_dividendos_hist.empty:
-        return None
-        
-    df_anual = df_dividendos_hist.groupby('Ano')['Dividendo'].sum().reset_index()
-    df_anual.columns = ['Ano', 'Total Dividendo']
-    
-    # Filtrar anos com dividendo > 0
-    df_anual = df_anual[df_anual['Total Dividendo'] > 0].reset_index(drop=True)
-    
-    if len(df_anual) < 2:
-        return None
-        
-    primeiro_ano = df_anual.iloc[0]['Ano']
-    ultimo_ano = df_anual.iloc[-1]['Ano']
-    
-    dividendo_inicio = df_anual.iloc[0]['Total Dividendo']
-    dividendo_final = df_anual.iloc[-1]['Total Dividendo']
-    
-    n_anos = ultimo_ano - primeiro_ano
-    
-    if n_anos <= 0 or dividendo_inicio <= 0:
-        return None
-        
-    # Calcular CAGR
-    try:
-        # Fórmula: (Valor Final / Valor Inicial)^(1/n_anos) - 1
-        cagr = (pow(dividendo_final / dividendo_inicio, 1 / n_anos) - 1) * 100
-        return cagr
-    except:
-        return None
-
-# ==============================
-# NOVO: SISTEMA DE RANKING DE DIVIDENDOS FLEXÍVEL (REFORMULADO)
-# ==============================
-def calcular_ranking_dividendos(df_filtrado, limite_empresas=10):
-    """
-    Calcula um conjunto completo de métricas de dividendos (DY, Consistência, Crescimento)
-    para um limite de empresas, focando em robustez com yfinance.
-    """
-    
-    # Garantir que só temos tickers válidos
-    tickers_unicos = df_filtrado['Ticker'].dropna().unique()
-    # Limitar a análise a, no máximo, 50 empresas por performance, mas ranquear o TOP 10
-    tickers_analisar = tickers_unicos[:50] 
-    
-    dados_dy = []
-    
-    if not tickers_analisar.size:
-        return pd.DataFrame()
-
-    st.warning(f"⚠️ **Busca em tempo real (yfinance):** Analisando os primeiros {len(tickers_analisar)} tickers para ranking (limite de 50 para evitar rate limit). O limite de exibição é Top {limite_empresas}.")
-
-    with st.spinner(f"Calculando métricas de dividendos para {len(tickers_analisar)} empresas..."):
-        # Total de passos para a barra de progresso
-        total_steps = len(tickers_analisar)
-        
-        progress_bar = st.progress(0, text="Buscando dados de mercado...")
-        
-        for i, ticker in enumerate(tickers_analisar):
-            
-            # 1. Buscar Cotação e Setor
-            dados_cotacao = buscar_cotacao_atual(ticker)
-            setor = df_filtrado[df_filtrado['Ticker'] == ticker]['SETOR_ATIV'].iloc[0] if not df_filtrado[df_filtrado['Ticker'] == ticker]['SETOR_ATIV'].empty else 'N/A'
-            
-            # 2. Buscar Histórico de Dividendos
-            df_dividendos = buscar_dividendos_historicos(ticker)
-            
-            dy_12m = None
-            anos_pagos = 0
-            anos_consecutivos = 0
-            cagr = None
-            
-            if dados_cotacao and df_dividendos is not None and not df_dividendos.empty:
-                
-                # A. Calcular DY (Últimos 12 meses)
-                data_limite = datetime.now() - timedelta(days=365)
-                dividendos_12m = df_dividendos[df_dividendos['Data'] >= data_limite]
-                
-                if not dividendos_12m.empty and dados_cotacao['cotacao'] > 0:
-                    total_dividendos_12m = dividendos_12m['Dividendo'].sum()
-                    dy_12m = (total_dividendos_12m / dados_cotacao['cotacao']) * 100
-                    
-                # B. Calcular Consistência
-                anos_pagos, anos_consecutivos = calcular_consistencia_dividendos(df_dividendos)
-                
-                # C. Calcular Crescimento (CAGR)
-                cagr = calcular_crescimento_dividendos(df_dividendos)
-            
-            if dados_cotacao is not None:
-                dados_dy.append({
-                    'Ticker': ticker,
-                    'Setor': setor,
-                    'Cotação': dados_cotacao['cotacao'],
-                    'Dividend Yield (12M)': dy_12m,
-                    'Anos Pagos (Total)': anos_pagos,
-                    'Anos Consecutivos': anos_consecutivos,
-                    'CAGR (Cresc. Dividendo)': cagr
-                })
-            
-            # CORREÇÃO CRÍTICA: Atraso para evitar rate limit
-            time.sleep(0.5) 
-            
-            # Atualiza a barra de progresso
-            percent_complete = (i + 1) / total_steps
-            progress_bar.progress(percent_complete, text=f"Buscando {ticker} ({i+1}/{total_steps})...")
-
-        progress_bar.empty() # Remove a barra de progresso ao finalizar
-    
-    # Preenche NaNs (empresas que não pagaram) com 0 para que possam ser ranqueadas
-    return pd.DataFrame(dados_dy).fillna(0) 
-
-# ==============================
-# FUNÇÃO PARA VALUATION POR LUCRO ECONÔMICO/SELIC
-# ==============================
 def calcular_valuation_lucro_economico_selic(lucro_economico, selic_percentual=15):
     """
     Calcula o valuation da empresa usando método Lucro Econômico/SELIC
@@ -491,7 +461,9 @@ def criar_grafico_comparativo(preco_calculado, cotacao_atual, ticker):
     
     return fig
 
-# Carregar dados
+# ==============================
+# CARREGAMENTO E PRÉ-PROCESSAMENTO DOS DADOS CVM
+# ==============================
 @st.cache_data
 def load_data():
     # Procurar automaticamente o arquivo em locais possíveis
@@ -519,6 +491,10 @@ def load_data():
     df = pd.read_excel(data_path)
     df.columns = [c.strip() for c in df.columns]
 
+    # ... [O restante do seu código de cálculo de Médias, ROA, ROE, Margens, WACC, Lucro Econômico]
+    # (Mantido como estava na versão anterior, sem repetição aqui por brevidade)
+    # Certifique-se de que este bloco está completo no seu script.
+    
     # =============================================================
     # MAPEAMENTO EXATO DAS CONTAS (compatível com dff_2010_2024)
     # =============================================================
@@ -709,10 +685,17 @@ def load_data():
         (df["ROE"] > df["ROA"]) & (df["ROE"] > df["ROI"]),
         False
     )
-
+    
     return df
 
 df = load_data()
+
+# ==============================
+# PRÉ-FILTRO DE CONSISTÊNCIA (EXECUÇÃO INICIAL)
+# ==============================
+# Esta etapa é executada uma vez devido ao @st.cache_data
+TICKERS_CONSISTENTES = calcular_tickers_consistentes(df)
+
 
 # ==============================
 # SIDEBAR - FILTROS PRINCIPAIS
@@ -778,10 +761,10 @@ if modo_analise == "🏆 Dados Gerais":
     
     # Abas para diferentes rankings
     rank_tab1, rank_tab2, rank_tab3, rank_tab4, rank_tab5 = st.tabs([
-        "📈 Rentabilidade", "💰 Lucro e Receita", "🏛️ Solidez", "📊 Eficiência", "💰 Dividendos"
+        "📈 Rentabilidade", "💰 Lucro e Receita", "🏛️ Solidez", "📊 Eficiência", "👑 Dividendos Consistentes"
     ])
     
-    # --- RANKING DE RENTABILIDADE ---
+    # --- RANKING DE RENTABILIDADE (Mantido) ---
     with rank_tab1:
         col1, col2 = st.columns(2)
         
@@ -825,7 +808,7 @@ if modo_analise == "🏆 Dados Gerais":
         else:
             st.warning("Não há dados suficientes para exibir a tabela consolidada")
     
-    # --- RANKING DE LUCRO E RECEITA ---
+    # --- RANKING DE LUCRO E RECEITA (Mantido) ---
     with rank_tab2:
         col1, col2 = st.columns(2)
         
@@ -863,7 +846,7 @@ if modo_analise == "🏆 Dados Gerais":
             else:
                 st.warning("Não há dados de receita disponíveis para ranking")
     
-    # --- RANKING DE SOLIDEZ ---
+    # --- RANKING DE SOLIDEZ (Mantido) ---
     with rank_tab3:
         col1, col2 = st.columns(2)
         
@@ -896,7 +879,7 @@ if modo_analise == "🏆 Dados Gerais":
             else:
                 st.warning("Não há dados de ROI disponíveis para ranking")
 
-    # --- RANKING DE EFICIÊNCIA ---
+    # --- RANKING DE EFICIÊNCIA (Mantido) ---
     with rank_tab4:
         col1, col2 = st.columns(2)
         
@@ -924,105 +907,66 @@ if modo_analise == "🏆 Dados Gerais":
             else:
                 st.warning("Não há dados de WACC disponíveis para ranking")
 
-    # --- RANKING DE DIVIDENDOS (NOVA ESTRUTURA) ---
+    # --- RANKING DE DIVIDENDOS CONSISTENTES (NOVA LÓGICA) ---
     with rank_tab5:
-        st.header("💰 Análise Avançada de Pagadores de Dividendos")
+        st.header("👑 Top Pagadores de Dividendos Consistentes")
 
-        # Controles para seleção de limite (afeta o limite de exibição final, a análise inicial é nos primeiros 50)
-        col_limit, _ = st.columns(2)
-        with col_limit:
-            limite_empresas = st.selectbox(
-                "Top X empresas para cada ranking:", 
-                [10, 15, 20], 
-                index=0, 
-                format_func=lambda x: f"Top {x} empresas",
-                key="limite_dy_final"
-            )
+        # Configuração do período e limite
+        periodo_dy = st.slider(
+            "Período de cálculo do DY Médio (anos):", 
+            min_value=5, max_value=15, value=10, step=1
+        )
+        limite_ranking = st.selectbox(
+            "Top X empresas para o ranking:",
+            [10, 15, 20], 
+            index=0, 
+            format_func=lambda x: f"Top {x} empresas",
+            key="limite_dy_final_consistente"
+        )
+        
+        st.markdown(f"**Critério de Pré-Filtro:** Tickers que pagaram proventos em **todos os anos** desde 2010. Total de Tickers consistentes: **{len(TICKERS_CONSISTENTES)}**.")
 
-        # Calcular todas as métricas em um único ciclo (máximo 50 tickers)
-        df_dy_completo = calcular_ranking_dividendos(df_filtrado, limite_empresas)
-
-        if not df_dy_completo.empty:
+        # Execução do cálculo de ranking
+        df_ranking_consistente = calcular_ranking_dividendos(TICKERS_CONSISTENTES, periodo_dy)
+        
+        coluna_dy = f'DY Médio ({periodo_dy}A)'
+        
+        if not df_ranking_consistente.empty:
             
-            # --- 1. RANKING POR DIVIDEND YIELD (DY) ---
-            st.subheader(f"🥇 Top {limite_empresas} - Maior Dividend Yield (12M)")
-            # FILTRO: Apenas com DY > 0
-            df_dy_rank = df_dy_completo[df_dy_completo['Dividend Yield (12M)'] > 0].nlargest(limite_empresas, 'Dividend Yield (12M)')
+            st.subheader(f"🥇 Top {limite_ranking} - Maior DY Médio nos Últimos {periodo_dy} Anos")
             
-            if not df_dy_rank.empty:
-                df_dy_display = df_dy_rank.copy()
-                df_dy_display['DY (12M)'] = df_dy_display['Dividend Yield (12M)'].apply(lambda x: f"{x:.2f}%".replace(".", ","))
-                df_dy_display['Cotação'] = df_dy_display['Cotação'].apply(
+            # FILTRO: Apenas com DY Médio > 0 (e ranqueia o Top N)
+            df_rank_final = df_ranking_consistente[df_ranking_consistente[coluna_dy] > 0].nlargest(limite_ranking, coluna_dy)
+            
+            if not df_rank_final.empty:
+                df_display = df_rank_final.copy()
+                df_display[coluna_dy] = df_display[coluna_dy].apply(lambda x: f"{x:.2f}%".replace(".", ","))
+                df_display['Cotação Atual'] = df_display['Cotação Atual'].apply(
                     lambda x: f"R$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
                 )
                 
                 st.dataframe(
-                    df_dy_display[['Ticker', 'DY (12M)', 'Cotação', 'Setor']], 
+                    df_display[['Ticker', coluna_dy, 'Cotação Atual', 'Setor']], 
                     use_container_width=True
                 )
                 
-                fig_dy = px.bar(df_dy_rank, x='Ticker', y='Dividend Yield (12M)', color='Setor',
-                                title='Ranking de Dividend Yield (Últimos 12 meses)')
-                fig_dy.update_layout(yaxis_title='Dividend Yield (%)', yaxis_tickformat=',.2f', height=400)
-                st.plotly_chart(fig_dy, use_container_width=True)
+                fig_dy_rank = px.bar(df_rank_final, x='Ticker', y=coluna_dy, color='Setor',
+                                title=f'Ranking de DY Médio (Últimos {periodo_dy} Anos)')
+                fig_dy_rank.update_layout(yaxis_title='DY Médio (%)', yaxis_tickformat=',.2f', height=400)
+                st.plotly_chart(fig_dy_rank, use_container_width=True)
             else:
-                st.info("Não há empresas com Dividend Yield positivo no período de 12 meses entre as analisadas.")
-                
-            st.markdown("---")
-            
-            # --- 2. RANKING POR CONSISTÊNCIA ---
-            st.subheader(f"🥈 Top {limite_empresas} - Maior Consistência (Anos Consecutivos Pagando)")
-            # FILTRO: Apenas com Anos Consecutivos > 0
-            df_consistencia_rank = df_dy_completo[df_dy_completo['Anos Consecutivos'] > 0].nlargest(limite_empresas, 'Anos Consecutivos')
-            
-            if not df_consistencia_rank.empty:
-                df_consistencia_display = df_consistencia_rank.copy()
-                
-                st.dataframe(
-                    df_consistencia_display[['Ticker', 'Anos Consecutivos', 'Anos Pagos (Total)', 'Setor']], 
-                    use_container_width=True
-                )
-                
-                fig_consist = px.bar(df_consistencia_rank, x='Ticker', y='Anos Consecutivos', color='Setor',
-                                     title='Ranking de Consistência (Anos Pagando Consecutivamente)')
-                fig_consist.update_layout(yaxis_title='Anos Consecutivos', height=400)
-                st.plotly_chart(fig_consist, use_container_width=True)
-            else:
-                st.info("Não há dados de consistência para ranking entre as empresas analisadas.")
-                
-            st.markdown("---")
-            
-            # --- 3. RANKING POR CRESCIMENTO (CAGR) ---
-            st.subheader(f"🥉 Top {limite_empresas} - Maior Crescimento de Dividendo (CAGR)")
-            # FILTRO: Apenas com CAGR > 0 (crescimento positivo)
-            df_cagr_rank = df_dy_completo[df_dy_completo['CAGR (Cresc. Dividendo)'] > 0].nlargest(limite_empresas, 'CAGR (Cresc. Dividendo)')
-            
-            if not df_cagr_rank.empty:
-                df_cagr_display = df_cagr_rank.copy()
-                df_cagr_display['CAGR'] = df_cagr_display['CAGR (Cresc. Dividendo)'].apply(lambda x: f"{x:.2f}%".replace(".", ","))
-                
-                st.dataframe(
-                    df_cagr_display[['Ticker', 'CAGR', 'Setor']], 
-                    use_container_width=True
-                )
-                
-                fig_cagr = px.bar(df_cagr_rank, x='Ticker', y='CAGR (Cresc. Dividendo)', color='Setor',
-                                  title='Ranking de Crescimento (CAGR) do Dividendo Anual')
-                fig_cagr.update_layout(yaxis_title='CAGR (%)', yaxis_tickformat=',.2f', height=400)
-                st.plotly_chart(fig_cagr, use_container_width=True)
-            else:
-                st.info("Não há dados de crescimento (CAGR) positivos para ranking entre as empresas analisadas.")
+                st.info(f"Nenhuma das {len(TICKERS_CONSISTENTES)} empresas consistentes tem DY médio positivo no período de {periodo_dy} anos.")
                 
         else:
-            st.error("❌ Não foi possível calcular nenhuma métrica de dividendos. Verifique a conectividade com o Yahoo Finance.")
+            st.error("❌ Não foi possível calcular o ranking de dividendos.")
 
         st.markdown("---")
         st.info("""
-**📝 Fonte de Dados de Dividendos:** A análise utiliza o pacote `yfinance` para buscar proventos por ação e cotação diretamente do Yahoo Finance.
+**📝 Metodologia:** O ranking é gerado apenas a partir de Tickers que pagaram proventos em **todos os anos** desde 2010. O *Dividend Yield* é calculado usando (Soma dos Proventos do Ano) / (Preço Final do Ano) e a média é tirada dos últimos X anos selecionados.
 """)
         
 # ==============================
-# VISÃO POR EMPRESA
+# VISÃO POR EMPRESA (Mantido)
 # ==============================
 elif modo_analise == "📈 Visão por Empresa":
     
@@ -1190,7 +1134,6 @@ elif modo_analise == "📈 Visão por Empresa":
                 st.metric("Último Provento", f"R$ {stats['ultimo_dividendo']:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), help=f"Data: {stats['data_ultimo'].strftime('%d/%m/%Y') if stats['data_ultimo'] else 'N/A'}")
             
             # Calcular Dividend Yield (últimos 12 meses)
-            # Como a função calcular_ranking_dividendos foi removida, usamos a lógica direta para o DY:
             cotacao_atual = buscar_cotacao_atual(ticker_selecionado)['cotacao'] if buscar_cotacao_atual(ticker_selecionado) else 0
             
             data_limite_dy = datetime.now() - timedelta(days=365)
@@ -1308,13 +1251,12 @@ elif modo_analise == "📈 Visão por Empresa":
 """)
 
 # ==============================
-# ANÁLISE SETORIAL
+# ANÁLISE SETORIAL (Mantido)
 # ==============================
 elif modo_analise == "🏭 Análise Setorial":
     
     st.header(f"🏭 Análise Setorial - {setor_selecionado}")
     
-    # Adicionar aqui a lógica de análise setorial, caso deseje (não estava no escopo inicial)
     st.info("Funcionalidade de Análise Setorial não implementada neste momento. Filtre por setor na aba 'Dados Gerais' para rankings.")
 
 # FIM DO SCRIPT
