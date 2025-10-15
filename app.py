@@ -28,7 +28,7 @@ def configurar_locale_brasil():
 configurar_locale_brasil()
 
 # ==============================
-# SISTEMA PRINCIPAL - CARREGAR DADOS DO EXCEL COMPLETO
+# SISTEMA PRINCIPAL - CARREGAR DADOS DO EXCEL COMPLETO (CORRIGIDO)
 # ==============================
 @st.cache_data(ttl=86400)  # Cache por 24 horas
 def carregar_dados_acoes_completo():
@@ -39,12 +39,22 @@ def carregar_dados_acoes_completo():
         excel_path = "historico_acoes_completo.xlsx"
         
         if os.path.exists(excel_path):
-            # Carregar dados de dividendos
-            df_dividendos = pd.read_excel(excel_path, sheet_name='dividendos')
+            # CORREÇÃO: Nomes corretos das sheets
+            df_dividendos = pd.read_excel(excel_path, sheet_name='Dividendos_Historicos')
+            # CORREÇÃO: Renomear colunas para padrão interno
+            df_dividendos = df_dividendos.rename(columns={
+                'Date': 'Data',
+                'Dividend': 'Dividendo'
+            })
             df_dividendos['Data'] = pd.to_datetime(df_dividendos['Data'])
             
-            # Carregar dados de cotações
-            df_cotacoes = pd.read_excel(excel_path, sheet_name='cotacoes')
+            # CORREÇÃO: Nomes corretos das sheets
+            df_cotacoes = pd.read_excel(excel_path, sheet_name='Cotações_Historicas')
+            # CORREÇÃO: Renomear colunas para padrão interno
+            df_cotacoes = df_cotacoes.rename(columns={
+                'Date': 'Data',
+                'Close': 'Close'  # Já está correto, mas mantemos para clareza
+            })
             df_cotacoes['Data'] = pd.to_datetime(df_cotacoes['Data'])
             
             return {
@@ -141,7 +151,7 @@ def formatar_dataframe_percentual(df, colunas):
     return df_formatado
 
 # ==============================
-# FUNÇÕES DE DIVIDENDOS E INVESTIMENTO (USANDO EXCEL)
+# FUNÇÕES DE DIVIDENDOS E INVESTIMENTO (USANDO EXCEL - CORRIGIDAS)
 # ==============================
 def buscar_dividendos_historicos(ticker):
     """
@@ -153,9 +163,13 @@ def buscar_dividendos_historicos(ticker):
             
         df_dividendos = DADOS_ACOES['dividendos']
         
-        # Filtrar dividendos do ticker específico
+        # CORREÇÃO: Usar coluna 'Ticker' (sem o _Yahoo)
         dividendos_ticker = df_dividendos[df_dividendos['Ticker'] == ticker].copy()
         
+        if dividendos_ticker.empty:
+            # Tentar com Ticker_Yahoo como fallback
+            dividendos_ticker = df_dividendos[df_dividendos['Ticker_Yahoo'] == ticker].copy()
+            
         if dividendos_ticker.empty:
             return None
             
@@ -192,7 +206,6 @@ def calcular_estatisticas_dividendos(df_dividendos):
 def buscar_historico_precos(ticker, periodo_maximo="max"):
     """
     Busca histórico de preços usando o arquivo Excel
-    CORREÇÃO: Compatibilidade de datas e nomenclatura de colunas
     """
     try:
         if DADOS_ACOES is None:
@@ -200,33 +213,22 @@ def buscar_historico_precos(ticker, periodo_maximo="max"):
             
         df_cotacoes = DADOS_ACOES['cotacoes']
         
-        # Filtrar cotações do ticker específico
+        # CORREÇÃO: Usar coluna 'Ticker' (sem o _Yahoo)
         cotacoes_ticker = df_cotacoes[df_cotacoes['Ticker'] == ticker].copy()
         
         if cotacoes_ticker.empty:
+            # Tentar com Ticker_Yahoo como fallback
+            cotacoes_ticker = df_cotacoes[df_cotacoes['Ticker_Yahoo'] == ticker].copy()
+            
+        if cotacoes_ticker.empty:
             return None
             
-        # Configurar índice de data CORRETAMENTE
+        # Configurar índice de data
         cotacoes_ticker = cotacoes_ticker.set_index('Data')
         cotacoes_ticker = cotacoes_ticker.sort_index()
         
-        # CORREÇÃO: Padronizar nome da coluna para 'Close'
-        if 'Fechamento' in cotacoes_ticker.columns:
-            cotacoes_ticker = cotacoes_ticker.rename(columns={'Fechamento': 'Close'})
-        elif 'Close' not in cotacoes_ticker.columns:
-            # Tentar encontrar a coluna de preço
-            colunas_preco = [col for col in cotacoes_ticker.columns if col.lower() in ['close', 'fechamento', 'preco', 'preço']]
-            if colunas_preco:
-                cotacoes_ticker = cotacoes_ticker.rename(columns={colunas_preco[0]: 'Close'})
-            else:
-                # Usar primeira coluna numérica
-                colunas_numericas = cotacoes_ticker.select_dtypes(include=[np.number]).columns
-                if len(colunas_numericas) > 0:
-                    cotacoes_ticker = cotacoes_ticker.rename(columns={colunas_numericas[0]: 'Close'})
-                else:
-                    return None
-        
-        return cotacoes_ticker[['Close']]  # Retornar apenas a coluna Close
+        # Já temos a coluna 'Close' do Excel
+        return cotacoes_ticker[['Close']]
         
     except Exception as e:
         st.warning(f"⚠️ Não foi possível buscar histórico de preços para {ticker}: {str(e)}")
@@ -314,7 +316,6 @@ def simular_investimento_lotes(ticker, data_inicio, quantidade_acoes=100):
 def buscar_cotacao_atual(ticker):
     """
     Busca a cotação atual do ticker no Excel
-    CORREÇÃO: Usar dados locais em vez de Yahoo Finance
     """
     try:
         if DADOS_ACOES is None:
@@ -322,8 +323,13 @@ def buscar_cotacao_atual(ticker):
             
         df_cotacoes = DADOS_ACOES['cotacoes']
         
-        # Filtrar cotações do ticker e pegar a mais recente
+        # CORREÇÃO: Usar coluna 'Ticker' (sem o _Yahoo)
         cotacoes_ticker = df_cotacoes[df_cotacoes['Ticker'] == ticker].copy()
+        
+        if cotacoes_ticker.empty:
+            # Tentar com Ticker_Yahoo como fallback
+            cotacoes_ticker = df_cotacoes[df_cotacoes['Ticker_Yahoo'] == ticker].copy()
+            
         if cotacoes_ticker.empty:
             return None
             
@@ -331,23 +337,12 @@ def buscar_cotacao_atual(ticker):
         cotacoes_ticker = cotacoes_ticker.sort_values('Data', ascending=False)
         ultima_cotacao = cotacoes_ticker.iloc[0]
         
-        # Determinar o preço (suporta múltiplos nomes de coluna)
-        if 'Fechamento' in ultima_cotacao:
-            preco = ultima_cotacao['Fechamento']
-        elif 'Close' in ultima_cotacao:
-            preco = ultima_cotacao['Close']
-        else:
-            # Buscar primeira coluna numérica
-            colunas_numericas = ultima_cotacao.select_dtypes(include=[np.number])
-            if not colunas_numericas.empty:
-                preco = colunas_numericas.iloc[0]
-            else:
-                return None
+        # Usar coluna 'Close' que já existe
+        preco = ultima_cotacao['Close']
         
         # Buscar informações básicas do dataset CVM para setor
         setor = "N/A"
         try:
-            # Tentar encontrar o setor no dataset principal
             if 'df' in globals():
                 empresa_info = df[df['Ticker'] == ticker]
                 if not empresa_info.empty:
@@ -437,7 +432,7 @@ def calcular_ranking_dividendos(df_filtrado, periodo_anos=1, limite_empresas=50)
 # CONFIGURAÇÕES INICIAIS
 # ==============================
 st.set_page_config(page_title="Dashboard CVM - Indicadores", layout="wide")
-st.title("Dashboard CVM : Análise das Demonstrações Financeiras")
+st.title("Dashboard CVM: Análise das Demonstrações Financeiras")
 
 # ==============================
 # LEITURA DE DADOS CVM
