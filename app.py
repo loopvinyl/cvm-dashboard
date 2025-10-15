@@ -902,7 +902,7 @@ if modo_analise == "🏆 Dados Gerais":
         "🏛️ Solidez", 
         "📊 Eficiência", 
         "👑 Dividendos Consistentes",
-        "🚀 Maior Retorno" 
+        "🚀 Maior Retorno" # NOVA ABA
     ])
 
     # --- RANKING DE RENTABILIDADE ---
@@ -1154,241 +1154,296 @@ if modo_analise == "🏆 Dados Gerais":
                 st.warning(f"Não foi possível calcular o retorno para nenhum ticker com a data de início {data_para_simulacao.strftime('%d/%m/%Y')}.")
 
 # ==============================
-# TELA PRINCIPAL - VISÃO POR EMPRESA (LÓGICA RESTAURADA)
+# VISÃO POR EMPRESA (BLOCO RESTAURADO)
 # ==============================
 elif modo_analise == "📈 Visão por Empresa":
-    
-    st.header(f"📈 Análise Histórica e Detalhada: {ticker_selecionado} - Ano {ano_selecionado}")
-
     if df_filtrado.empty:
-        st.warning(f"Não há dados CVM para {ticker_selecionado} no ano {ano_selecionado}.")
+        st.warning(f"Não há dados CVM para o ticker **{ticker_selecionado}** no ano de **{ano_selecionado}**.")
     else:
         dados_ano = df_filtrado.iloc[0]
+        st.header(f"📈 {ticker_selecionado} - Visão Anual ({ano_selecionado})")
         
-        # 1. Indicadores Chave do Ano
+        # 1. KPIs
         col1, col2, col3, col4 = st.columns(4)
         with col1:
-            st.metric("ROE (Ano)", formatar_percentual_brasil(dados_ano['ROE'] if pd.notna(dados_ano['ROE']) else 0))
+            st.metric("Lucro Líquido", formatar_moeda_brasil_correta(dados_ano["Lucro/Prejuízo Consolidado do Período"]))
         with col2:
-            st.metric("Margem Líquida (Ano)", formatar_percentual_brasil(dados_ano['Margem Líquida'] if pd.notna(dados_ano['Margem Líquida']) else 0))
+            st.metric("Receita", formatar_moeda_brasil_correta(dados_ano["Receita de Venda de Bens e/ou Serviços"]))
         with col3:
-            st.metric("Lucro Líquido", formatar_moeda_brasil_correta(dados_ano['Lucro/Prejuízo Consolidado do Período']))
+            st.metric("Patrimônio Líquido", formatar_moeda_brasil_correta(dados_ano["Patrimônio Líquido Consolidado"]))
         with col4:
-            st.metric("Receita Líquida", formatar_moeda_brasil_correta(dados_ano['Receita de Venda de Bens e/ou Serviços']))
+            st.metric("ROE", formatar_percentual_brasil(dados_ano["ROE"]))
 
         st.divider()
-
-        # 2. Abas Detalhadas
-        tab_indicadores, tab_simulacao, tab_valuation = st.tabs(["Indicadores Financeiros", "Simulação de Dividendos", "Valuation"])
-
-        # --- TAB: Indicadores Financeiros (Histórico) ---
-        with tab_indicadores:
-            st.subheader("Histórico de Rentabilidade e Estrutura")
+        
+        # 2. Tabs
+        tab_ind, tab_hist, tab_val, tab_sim = st.tabs(["Indicadores", "Histórico", "Valuation", "Simulação Investimento"])
+        
+        # --- TAB INDICADORES ---
+        with tab_ind:
+            st.subheader("Indicadores de Rentabilidade e Estrutura")
             
-            # Gráfico de Linha de Rentabilidade (ROE, ROA, ROI)
-            rentabilidade_hist = df_empresa_todos_anos[["Ano", "ROE", "ROA", "ROI"]].set_index("Ano")
-            rentabilidade_melted = rentabilidade_hist.melt(ignore_index=False, var_name='Métrica', value_name='Valor')
+            # Selecionar e formatar indicadores
+            indicadores_basicos = {
+                "ROE (Retorno sobre PL)": dados_ano["ROE"],
+                "ROA (Retorno sobre Ativo)": dados_ano["ROA"],
+                "ROI (Retorno sobre Investimento)": dados_ano["ROI"],
+                "Margem Líquida": dados_ano["Margem Líquida"],
+                "Margem Operacional": dados_ano["Margem Operacional"],
+                "Margem Bruta": dados_ano["Margem Bruta"],
+                "Capital Terceiros (%)": dados_ano["Percentual Capital Terceiros"],
+                "Capital Próprio (%)": dados_ano["Percentual Capital Próprio"],
+                "Alavancagem Eficaz": "Sim" if dados_ano["Alavancagem Eficaz"] else "Não"
+            }
             
-            fig_rentabilidade = px.line(rentabilidade_melted.reset_index(), x='Ano', y='Valor', color='Métrica', title=f"Histórico de Rentabilidade de {ticker_selecionado}")
-            fig_rentabilidade.update_layout(yaxis_tickformat=',.2%')
-            st.plotly_chart(fig_rentabilidade, use_container_width=True)
-
-            # Tabela Completa do Ano Selecionado
-            st.subheader(f"Dados do Ano {ano_selecionado}")
-            colunas_selecionadas = ["SETOR_ATIV", "Lucro/Prejuízo Consolidado do Período", "Receita de Venda de Bens e/ou Serviços", "Ativo Total", 
-                                    "Patrimônio Líquido Consolidado", "ROE", "Margem Líquida", "EBITDA", "ki", "ke", "wacc"]
+            df_indicadores = pd.DataFrame(indicadores_basicos.items(), columns=["Indicador", "Valor"])
             
-            df_detalhe = df_filtrado[colunas_selecionadas].transpose().reset_index()
-            df_detalhe.columns = ["Métrica", "Valor"]
-
-            # Formatação
-            colunas_moeda = ["Lucro/Prejuízo Consolidado do Período", "Receita de Venda de Bens e/ou Serviços", "Ativo Total", "Patrimônio Líquido Consolidado", "EBITDA"]
-            colunas_percentual = ["ROE", "Margem Líquida", "ki", "ke", "wacc"]
-            
-            def formatar_metricas(row):
-                if row['Métrica'] in colunas_moeda:
-                    return formatar_moeda_brasil_correta(row['Valor'])
-                elif row['Métrica'] in colunas_percentual:
-                    # O valor está em proporção (ex: 0.15) e precisa ser %
-                    return formatar_percentual_brasil(row['Valor'] if pd.notna(row['Valor']) else 0)
-                return row['Valor']
-
-            df_detalhe['Valor Formatado'] = df_detalhe.apply(formatar_metricas, axis=1)
-            
-            st.dataframe(df_detalhe[['Métrica', 'Valor Formatado']], use_container_width=True, hide_index=True)
-
-
-        # --- TAB: Simulação de Dividendos ---
-        with tab_simulacao:
-            st.subheader("Simulação de Retorno por Dividendos")
-            col_data, col_qtd = st.columns(2)
-            
-            with col_data:
-                data_compra_simulacao = st.date_input("Data de Compra:", datetime(2015, 1, 1), key=f"data_simulacao_{ticker_selecionado}")
-            with col_qtd:
-                quantidade_acoes = st.number_input("Quantidade de Ações (Lotes de 100):", min_value=100, step=100, value=100, key=f"qtd_acoes_{ticker_selecionado}")
-            
-            if st.button("Executar Simulação", key=f"btn_simulacao_{ticker_selecionado}"):
-                
-                simulacao = simular_investimento_lotes(ticker_selecionado, data_compra_simulacao, quantidade_acoes)
-                
-                if simulacao is None:
-                    st.error("Não foi possível obter dados de cotação/preço para esta simulação.")
-                elif 'error' in simulacao:
-                    st.error(simulacao['message'])
+            def formatar_indicador(row):
+                if "%" in row["Indicador"]:
+                    return formatar_percentual_brasil(row["Valor"])
+                elif row["Indicador"] in ["Alavancagem Eficaz"]:
+                    return row["Valor"]
                 else:
-                    st.subheader("Resultados da Simulação")
-                    
-                    col1_sim, col2_sim, col3_sim = st.columns(3)
-                    with col1_sim:
-                        st.metric("Valor Investido Inicial", formatar_moeda_brasil_correta(simulacao['valor_investido']/1000, 2))
-                    with col2_sim:
-                        st.metric("Valor Atual (Ações)", formatar_moeda_brasil_correta(simulacao['valor_investido_atual']/1000, 2))
-                    with col3_sim:
-                        st.metric("Total de Dividendos Recebidos", formatar_moeda_brasil_correta(simulacao['total_dividendos_recebidos']/1000, 2))
-                        
-                    st.markdown("---")
-                    
-                    col4_sim, col5_sim, col6_sim = st.columns(3)
-                    with col4_sim:
-                        st.metric("Ganho Total (R$)", formatar_moeda_brasil_correta(simulacao['ganho_total']/1000, 2), 
-                                  delta=formatar_percentual_brasil(simulacao['rentabilidade_total_percentual']/100, 2) + " (Retorno Total)")
-                    with col5_sim:
-                        st.metric("Rentabilidade (Preço)", formatar_percentual_brasil(simulacao['rentabilidade_preco_percentual']/100, 2))
-                    with col6_sim:
-                        st.metric("Rentabilidade (Dividendos)", formatar_percentual_brasil(simulacao['rentabilidade_dividendos_percentual']/100, 2))
-                    
-                    st.info(f"Compra efetuada em: {simulacao['data_compra'].strftime('%d/%m/%Y')} @ R$ {simulacao['preco_compra']:.2f} por ação.")
-                    if simulacao['sem_dividendos']:
-                        st.warning("⚠️ Não houve registro de proventos (dividendos/jcp) no período selecionado.")
-
-        # --- TAB: Valuation ---
-        with tab_valuation:
-            st.subheader("Valuation por Lucro Econômico/SELIC")
+                    return formatar_percentual_brasil(row["Valor"])
             
-            # Buscar dados adicionais (Cotação Atual e N. Ações)
+            df_indicadores["Valor Formatado"] = df_indicadores.apply(formatar_indicador, axis=1)
+            st.dataframe(df_indicadores.set_index("Indicador")[["Valor Formatado"]], use_container_width=True)
+
+        # --- TAB HISTÓRICO ---
+        with tab_hist:
+            st.subheader(f"Evolução Histórica de {ticker_selecionado}")
+            
+            df_grafico = df_empresa_todos_anos.copy()
+            
+            if not df_grafico.empty:
+                
+                # Gráfico de Lucro Líquido e Receita
+                fig_ll_rec = make_subplots(specs=[[{"secondary_y": True}]])
+                fig_ll_rec.add_trace(go.Bar(x=df_grafico["Ano"], y=df_grafico["Lucro/Prejuízo Consolidado do Período"], name='Lucro Líquido (R$ mil)'), secondary_y=False)
+                fig_ll_rec.add_trace(go.Line(x=df_grafico["Ano"], y=df_grafico["Receita de Venda de Bens e/ou Serviços"], name='Receita (R$ mil)', line=dict(color='orange')), secondary_y=True)
+                fig_ll_rec.update_layout(title_text="Lucro Líquido vs Receita (em R$ mil)")
+                st.plotly_chart(fig_ll_rec, use_container_width=True)
+
+                # Gráfico de Rentabilidade
+                fig_rent = px.line(df_grafico, x="Ano", y=["ROE", "ROA", "ROI"], title="Evolução da Rentabilidade (ROE, ROA, ROI)")
+                fig_rent.update_layout(yaxis_tickformat=".2%")
+                st.plotly_chart(fig_rent, use_container_width=True)
+            else:
+                st.warning("Não há dados históricos disponíveis para esta empresa.")
+
+
+        # --- TAB VALUATION ---
+        with tab_val:
+            st.subheader("Valuation Lucro Econômico vs. Preço de Mercado")
+            
+            # Buscar dados da cotação
             dados_cotacao = buscar_cotacao_atual(ticker_selecionado)
             
-            # Tentar obter N. Ações
-            if dados_cotacao and dados_cotacao.get('market_cap') and dados_cotacao.get('cotacao'):
-                market_cap = dados_cotacao['market_cap']
+            if dados_cotacao and dados_cotacao['cotacao'] > 0:
                 cotacao_atual = dados_cotacao['cotacao']
-                numero_acoes = market_cap / cotacao_atual
-            else:
-                st.warning("Não foi possível obter dados de Market Cap e/ou Cotação Atual para o Valuation.")
-                # st.stop() # Não pode parar o app, apenas a aba
-                if dados_ano["Lucro Econômico 2"] is None or dados_ano["Lucro Econômico 2"] <= 0:
-                     st.warning("Valuation não aplicável.")
                 
-                # Definir valores de placeholder para evitar erro
-                numero_acoes = 1 
-                cotacao_atual = 1 
-
-            # Controles de Valuation
-            col_selic, col_acoes = st.columns(2)
-            with col_selic:
-                selic_estimada = st.number_input("SELIC Estimada (%):", min_value=1.0, max_value=50.0, value=15.0, step=0.5, key=f"selic_{ticker_selecionado}")
-            with col_acoes:
-                st.metric("Nº de Ações Estimado (Emissão)", formatar_numero_brasil_correto(numero_acoes, 0))
-            
-            
-            # Cálculo
-            lucro_economico_2 = dados_ano["Lucro Econômico 2"]
-            
-            if pd.notna(lucro_economico_2) and lucro_economico_2 > 0:
+                # Pegar o Lucro Econômico mais recente disponível (do ano selecionado)
+                lucro_economico = dados_ano.get("Lucro Econômico 1")
                 
-                # O valor é em R$ mil (como todos os dados CVM)
-                valor_empresa_em_mil = calcular_valuation_lucro_economico_selic(lucro_economico_2, selic_estimada)
-                
-                # Converter para R$ normais
-                valor_empresa_em_reais = valor_empresa_em_mil * 1000 
-                
-                # Calcular Preço Justo (Preço Calculado)
-                preco_calculado = valor_empresa_em_reais / numero_acoes if numero_acoes > 0 else 0
-                
-                if preco_calculado > 0 and cotacao_atual > 0:
+                if pd.notna(lucro_economico):
+                    st.info(f"O **Lucro Econômico** de **{ticker_selecionado}** em **{ano_selecionado}** é de: **{formatar_moeda_brasil_correta(lucro_economico)}**.")
                     
-                    # Gráfico comparativo
-                    fig_comp = criar_grafico_comparativo(preco_calculado, cotacao_atual, ticker_selecionado)
-                    st.plotly_chart(fig_comp, use_container_width=True)
+                    # Número de ações e Taxa SELIC
+                    num_acoes_col = "Numero Total de Ações" # Coluna do Excel
                     
-                    # Tabela de Resultados
-                    st.markdown("#### Detalhes do Cálculo")
-                    col_lucro, col_val_emp, col_preco_justo = st.columns(3)
-                    with col_lucro:
-                        st.metric("Lucro Econômico (R$ mil)", formatar_moeda_brasil_correta(lucro_economico_2))
-                    with col_val_emp:
-                        st.metric("Valor da Empresa (Calculado)", formatar_moeda_brasil_correta(valor_empresa_em_mil))
-                    with col_preco_justo:
-                        st.metric("Preço Justo (Calculado)", f"R$ {preco_calculado:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+                    # Tenta encontrar o número total de ações no dataframe CVM
+                    num_acoes = dados_ano.get(num_acoes_col)
+                    
+                    if pd.notna(num_acoes) and num_acoes > 0:
+                        
+                        # Simulação da Taxa SELIC (assumida)
+                        selic_assumida = st.slider("Taxa Anual (SELIC/WACC Assumido - %):", 5.0, 30.0, 15.0, 0.5)
+                        
+                        # 1. Calcular Valor da Empresa
+                        valor_empresa_rs_mil = calcular_valuation_lucro_economico_selic(lucro_economico, selic_assumida)
+                        
+                        if valor_empresa_rs_mil:
+                            valor_empresa_rs = valor_empresa_rs_mil * 1000 # Convertendo R$ mil para R$
+                            
+                            # 2. Calcular Preço por Ação
+                            preco_calculado = valor_empresa_rs / num_acoes
+                            
+                            # 3. Exibir resultados e gráfico
+                            st.subheader("Resultado do Valuation (Lucro Econômico/Custo de Capital)")
+                            
+                            col_val1, col_val2 = st.columns(2)
+                            with col_val1:
+                                st.metric("Valor Justo Calculado (R$)", f"{preco_calculado:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+                            with col_val2:
+                                st.metric("Cotação Atual de Mercado (R$)", f"{cotacao_atual:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+                            
+                            fig_comp = criar_grafico_comparativo(preco_calculado, cotacao_atual, ticker_selecionado)
+                            st.plotly_chart(fig_comp, use_container_width=True)
+                            
+                            diferenca_percentual = ((cotacao_atual / preco_calculado) - 1) * 100
+                            if diferenca_percentual < -20:
+                                st.success(f"O ativo parece subvalorizado em {formatar_percentual_brasil(abs(diferenca_percentual)/100, 1)}.")
+                            elif diferenca_percentual > 20:
+                                st.error(f"O ativo parece sobrevalorizado em {formatar_percentual_brasil(diferenca_percentual/100, 1)}.")
+                            else:
+                                st.info("O preço de mercado está próximo do valor justo calculado.")
 
-                    # Análise de Margem de Segurança
-                    margem_seguranca = (preco_calculado / cotacao_atual) - 1 if cotacao_atual > 0 else 0
-                    if margem_seguranca > 0:
-                        st.success(f"Margem de Segurança: {formatar_percentual_brasil(margem_seguranca, 2)}")
-                    elif margem_seguranca < 0:
-                        st.error(f"Margem de Segurança: {formatar_percentual_brasil(margem_seguranca, 2)}")
+                        else:
+                            st.warning("Não foi possível calcular o Valor da Empresa (Lucro Econômico <= 0).")
+                            
                     else:
-                        st.info("Preço Justo igual à Cotação Atual.")
-
-                elif preco_calculado > 0 and cotacao_atual == 0:
-                    st.warning("Cotação atual não disponível, apenas o Preço Justo Calculado pode ser exibido.")
-                    st.metric("Preço Justo (Calculado)", f"R$ {preco_calculado:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-                    
+                        st.warning("Não foi possível encontrar o 'Número Total de Ações' no DFF para realizar o cálculo por ação.")
                 else:
-                    st.error("Preço Justo calculado resultou em zero. Verifique os dados.")
+                    st.warning("Não há Lucro Econômico calculado para o ano e ticker selecionados.")
             else:
-                st.warning("Lucro Econômico negativo ou zero para este ano/empresa. O Valuation não se aplica.")
+                st.warning("Não foi possível obter a cotação atual do ticker no Yahoo Finance.")
+
+        # --- TAB SIMULAÇÃO ---
+        with tab_sim:
+            st.subheader(f"Simulação de Investimento em {ticker_selecionado}")
+            
+            col_q, col_d = st.columns(2)
+            with col_q:
+                quantidade_acoes = st.number_input("Quantidade de Ações (Lotes):", min_value=100, value=100, step=100)
+            
+            with col_d:
+                data_minima = datetime(2010, 1, 1).date()
+                data_hoje = date.today()
+                data_compra = st.date_input(
+                    "Data de Compra (Início do Período):",
+                    value=data_hoje - timedelta(days=365 * 5),
+                    min_value=data_minima,
+                    max_value=data_hoje - timedelta(days=1)
+                )
+
+            # Simulação
+            if st.button("Executar Simulação", key="btn_simular_lotes"):
                 
+                # Garantir que a data seja um objeto datetime.datetime
+                data_para_simulacao = datetime.combine(data_compra, datetime.min.time())
+                
+                resultado = simular_investimento_lotes(ticker_selecionado, data_para_simulacao, quantidade_acoes)
+                
+                if resultado is None:
+                    st.error("Não foi possível obter dados de preço ou dividendos para o período selecionado.")
+                elif 'error' in resultado:
+                    st.error(f"Erro na simulação: {resultado['message']}")
+                else:
+                    
+                    st.markdown(f"#### Resultados da Simulação (Comprado em {resultado['data_compra'].strftime('%d/%m/%Y')})")
+
+                    # KPIs da Simulação
+                    col_s1, col_s2, col_s3 = st.columns(3)
+                    with col_s1:
+                        st.metric("Valor Investido Inicial", f"R$ {formatar_numero_brasil_correto(resultado['valor_investido'], 2)}")
+                    with col_s2:
+                        st.metric("Valor Total Atual", f"R$ {formatar_numero_brasil_correto(resultado['valor_investido_atual'] + resultado['total_dividendos_recebidos'], 2)}")
+                    with col_s3:
+                        st.metric("Rentabilidade Total", formatar_percentual_brasil(resultado['rentabilidade_total_percentual'] / 100))
+
+                    st.markdown("---")
+                    
+                    col_r1, col_r2, col_r3 = st.columns(3)
+                    with col_r1:
+                        st.metric("Ganho por Valorização", f"R$ {formatar_numero_brasil_correto(resultado['ganho_preco'], 2)}", 
+                                  delta=formatar_percentual_brasil(resultado['rentabilidade_preco_percentual'] / 100))
+                    with col_r2:
+                        st.metric("Total de Proventos", f"R$ {formatar_numero_brasil_correto(resultado['total_dividendos_recebidos'], 2)}", 
+                                  delta=formatar_percentual_brasil(resultado['rentabilidade_dividendos_percentual'] / 100))
+                    with col_r3:
+                        st.metric("Ganho Total (R$)", f"R$ {formatar_numero_brasil_correto(resultado['ganho_total'], 2)}")
+
+                    if resultado['sem_dividendos']:
+                        st.info("⚠️ Não foram encontrados proventos pagos no período da simulação.")
+
 # ==============================
-# TELA PRINCIPAL - ANÁLISE SETORIAL (LÓGICA RESTAURADA)
+# ANÁLISE SETORIAL (BLOCO RESTAURADO)
 # ==============================
 elif modo_analise == "🏭 Análise Setorial":
     
-    st.header(f"🏭 Análise Setorial de {setor_selecionado} - Ano {ano_selecionado}")
+    st.header(f"🏭 {setor_selecionado} - Análise Setorial ({ano_selecionado})")
 
     if df_filtrado.empty:
-        st.warning(f"Não há dados CVM para o setor {setor_selecionado} no ano {ano_selecionado}.")
+        st.warning(f"Não há dados CVM para o setor **{setor_selecionado}** no ano de **{ano_selecionado}**.")
     else:
-        # Calcular a MEDIANA dos indicadores para representar o setor
-        setor_mediana = df_filtrado[["ROE", "Margem Líquida", "Passivo Oneroso Médio", "Receita de Venda de Bens e/ou Serviços"]].median().to_dict()
         
-        col1, col2, col3 = st.columns(3)
+        # 1. KPIs Setoriais
+        receita_setor = df_filtrado["Receita de Venda de Bens e/ou Serviços"].sum()
+        lucro_setor = df_filtrado["Lucro/Prejuízo Consolidado do Período"].sum()
+        pl_setor = df_filtrado["Patrimônio Líquido Consolidado"].sum()
+        roe_medio_setor = df_filtrado["ROE"].mean()
+
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
-            st.metric("ROE Mediano do Setor", formatar_percentual_brasil(setor_mediana.get('ROE', 0)))
+            st.metric("Empresas no Setor", df_filtrado["Ticker"].nunique())
         with col2:
-            st.metric("Margem Líquida Mediana", formatar_percentual_brasil(setor_mediana.get('Margem Líquida', 0)))
+            st.metric("Receita Total", formatar_moeda_brasil_correta(receita_setor))
         with col3:
-            # Passivo Oneroso Médio (em R$ mil)
-            st.metric("Endividamento Mediano", formatar_moeda_brasil_correta(setor_mediana.get('Passivo Oneroso Médio', 0)))
+            st.metric("Lucro Total", formatar_moeda_brasil_correta(lucro_setor))
+        with col4:
+            st.metric("ROE Médio", formatar_percentual_brasil(roe_medio_setor))
 
         st.divider()
 
-        # 1. Comparativo de Rentabilidade (ROE)
-        st.subheader("Comparativo de Rentabilidade (ROE) no Setor")
-        df_setor_roe = df_filtrado[["Ticker", "ROE"]].dropna().sort_values("ROE", ascending=False)
-        fig_roe_setor = px.bar(df_setor_roe, x='Ticker', y='ROE', title=f"ROE das Empresas do Setor {setor_selecionado}")
-        fig_roe_setor.update_layout(yaxis_tickformat=',.2%')
-        st.plotly_chart(fig_roe_setor, use_container_width=True)
+        # 2. Tabs
+        tab_rank_setor, tab_medias, tab_comp_hist = st.tabs(["Ranking Setorial", "Médias e Desvios", "Comparativo Histórico"])
 
-        # 2. Histórico da Receita Total do Setor (todos os anos)
-        st.subheader("Histórico de Receita Total do Setor")
-        # Agrupar a Receita de todas as empresas do setor por ano
-        df_setor_receita_hist = df_setor_todos_anos.groupby("Ano")["Receita de Venda de Bens e/ou Serviços"].sum().reset_index()
-        df_setor_receita_hist["Receita (R$ Bilhões)"] = df_setor_receita_hist["Receita de Venda de Bens e/ou Serviços"] * 1000 / 1e9
-        
-        fig_receita_hist = px.bar(df_setor_receita_hist, x='Ano', y='Receita (R$ Bilhões)', title=f"Evolução da Receita Total do Setor {setor_selecionado}")
-        fig_receita_hist.update_layout(yaxis_tickformat=',.2f')
-        st.plotly_chart(fig_receita_hist, use_container_width=True)
+        # --- TAB RANKING SETORIAL ---
+        with tab_rank_setor:
+            st.subheader(f"Top 10 Empresas no Setor {setor_selecionado}")
+            
+            col_r1, col_r2 = st.columns(2)
+            
+            with col_r1:
+                st.markdown("##### Ranking por ROE")
+                roe_ranking_setor = df_filtrado.nlargest(10, "ROE")[["Ticker", "ROE"]]
+                roe_ranking_formatado = formatar_dataframe_percentual(roe_ranking_setor, ['ROE'])
+                st.dataframe(roe_ranking_formatado, use_container_width=True)
+            
+            with col_r2:
+                st.markdown("##### Ranking por Lucro Líquido")
+                lucro_ranking_setor = df_filtrado.nlargest(10, "Lucro/Prejuízo Consolidado do Período")[["Ticker", "Lucro/Prejuízo Consolidado do Período"]]
+                lucro_ranking_formatado = formatar_dataframe_moeda(lucro_ranking_setor, ["Lucro/Prejuízo Consolidado do Período"])
+                lucro_ranking_formatado = lucro_ranking_formatado.rename(columns={"Lucro/Prejuízo Consolidado do Período": "Lucro"})
+                st.dataframe(lucro_ranking_formatado, use_container_width=True)
 
-        # 3. Tabela Detalhada
-        st.subheader(f"Tabela de Indicadores - {ano_selecionado}")
-        colunas_tabela_setorial = ["Ticker", "Lucro/Prejuízo Consolidado do Período", "Receita de Venda de Bens e/ou Serviços", "ROE", "Margem Líquida", "Passivo Oneroso Médio"]
-        df_tabela_setorial = df_filtrado[colunas_tabela_setorial].sort_values("ROE", ascending=False)
 
-        # Formatação
-        df_tabela_setorial_f = df_tabela_setorial.copy()
-        df_tabela_setorial_f = formatar_dataframe_moeda(df_tabela_setorial_f, ["Lucro/Prejuízo Consolidado do Período", "Receita de Venda de Bens e/ou Serviços", "Passivo Oneroso Médio"])
-        df_tabela_setorial_f = formatar_dataframe_percentual(df_tabela_setorial_f, ["ROE", "Margem Líquida"])
-        
-        st.dataframe(df_tabela_setorial_f, use_container_width=True)
+        # --- TAB MÉDIAS E DESVIOS ---
+        with tab_medias:
+            st.subheader(f"Médias Setoriais de {setor_selecionado} ({ano_selecionado})")
+            
+            indicadores_setoriais = ["ROE", "ROA", "Margem Líquida", "Percentual Capital Terceiros"]
+            df_medias = df_filtrado[indicadores_setoriais].mean().rename("Média Setorial")
+            df_desvios = df_filtrado[indicadores_setoriais].std().rename("Desvio Padrão")
+            
+            df_analise = pd.concat([df_medias, df_desvios], axis=1).reset_index().rename(columns={"index": "Indicador"})
+            
+            # Formatação
+            df_analise['Média Setorial Formatada'] = df_analise.apply(
+                lambda row: formatar_percentual_brasil(row['Média Setorial']) if 'Margem' in row['Indicador'] or 'ROE' in row['Indicador'] or 'ROA' in row['Indicador'] or 'Percentual' in row['Indicador'] else formatar_percentual_brasil(row['Média Setorial']), axis=1
+            )
+            df_analise['Desvio Padrão Formatado'] = df_analise.apply(
+                lambda row: formatar_percentual_brasil(row['Desvio Padrão']) if 'Margem' in row['Indicador'] or 'ROE' in row['Indicador'] or 'ROA' in row['Indicador'] or 'Percentual' in row['Indicador'] else formatar_percentual_brasil(row['Desvio Padrão']), axis=1
+            )
+
+            st.dataframe(df_analise[['Indicador', 'Média Setorial Formatada', 'Desvio Padrão Formatado']], use_container_width=True)
+
+        # --- TAB COMPARATIVO HISTÓRICO ---
+        with tab_comp_hist:
+            st.subheader(f"Evolução Anual das Médias Setoriais")
+            
+            df_setor_anual = df_setor_todos_anos.groupby("Ano")[["ROE", "ROA", "Margem Líquida", "Lucro/Prejuízo Consolidado do Período"]].mean().reset_index()
+            df_setor_anual = df_setor_anual.dropna()
+            
+            if not df_setor_anual.empty:
+                # Gráfico de Rentabilidade
+                fig_rent_setor = px.line(df_setor_anual, x="Ano", y=["ROE", "ROA"], title="Evolução da Rentabilidade Média Setorial")
+                fig_rent_setor.update_layout(yaxis_tickformat=".2%")
+                st.plotly_chart(fig_rent_setor, use_container_width=True)
+                
+                # Gráfico de Lucro Médio
+                df_setor_anual['Lucro Médio (R$ mil)'] = df_setor_anual['Lucro/Prejuízo Consolidado do Período']
+                fig_lucro_setor = px.bar(df_setor_anual, x="Ano", y="Lucro Médio (R$ mil)", title="Evolução do Lucro Líquido Médio (R$ mil)")
+                st.plotly_chart(fig_lucro_setor, use_container_width=True)
+            else:
+                st.warning("Não há dados históricos consistentes para o setor selecionado.")
