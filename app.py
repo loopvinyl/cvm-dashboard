@@ -9,8 +9,9 @@ from plotly.subplots import make_subplots
 import numpy as np
 import os
 import yfinance as yf
-from datetime import datetime, timedelta, date # Importando 'date' para uso em isinstance()
+from datetime import datetime, timedelta, date
 import locale
+import time # NOVO: Importação para controle de API Rate Limit
 
 # ==============================
 # CONFIGURAÇÃO DE FORMATAÇÃO BRASILEIRA
@@ -312,6 +313,10 @@ def calcular_dividend_yield(ticker):
         total_dividendos_12m = dividendos_12m['Dividendo'].sum()
         cotacao_atual = dados_cotacao['cotacao']
         
+        # Evitar divisão por zero e garantir que a cotação é positiva
+        if cotacao_atual <= 0:
+            return None
+            
         # Calcular dividend yield
         dividend_yield = (total_dividendos_12m / cotacao_atual) * 100
         
@@ -354,6 +359,7 @@ def calcular_dividend_yield_otimizado(ticker, df_dividendos_cache=None, periodo_
 def calcular_ranking_dividendos(df_filtrado, periodo_anos=1, limite_empresas=50):
     """
     Calcula ranking de dividendos com diferentes períodos
+    **CORREÇÃO:** Adicionado time.sleep para evitar rate limit do yfinance.
     """
     # Carregar cache de dividendos (retorna None, forçando o uso do yfinance via fallback)
     df_dividendos_cache = carregar_dados_dividendos_cache()
@@ -377,6 +383,9 @@ def calcular_ranking_dividendos(df_filtrado, periodo_anos=1, limite_empresas=50)
         for i, ticker in enumerate(tickers_analisar):
             # Tenta calcular o DY
             dy = calcular_dividend_yield_otimizado(ticker, df_dividendos_cache, periodo_anos)
+            
+            # CORREÇÃO CRÍTICA: Atraso para evitar rate limit do Yahoo Finance
+            time.sleep(0.5) 
             
             if dy is not None and dy > 0:
                 # Se o DY é válido, busca a cotação (que também está cacheada)
@@ -994,8 +1003,6 @@ if modo_analise == "🏆 Dados Gerais":
 - **Entre 4%-8%:** Yield atrativo - bom para renda...
             """)
         else:
-            # CORREÇÃO: A mensagem de erro agora só aparece se realmente não houver dados,
-            # e não como resultado de falha de conexão que deve ser tratada dentro da função.
             st.error("❌ Não foi possível calcular o ranking de Dividend Yields. Verifique se os Tickers têm dados de cotação e proventos no Yahoo Finance.")
 
         # **ALTERAÇÃO:** Substituição da instrução de download de CSV
@@ -1244,7 +1251,7 @@ elif modo_analise == "📈 Visão por Empresa":
 💡 **Tipos de lote:**
 * 100 ações: Lote padrão
 * 1.000 ações: Lote intermediário
-* 10.000 ações: Lote grande
+* 1.0000 ações: Lote grande
         """)
         
         if st.button("Executar Simulação", key="btn_simulacao"):
@@ -1311,7 +1318,6 @@ elif modo_analise == "🏭 Análise Setorial":
     
     st.header(f"🏭 Análise Setorial - {setor_selecionado}")
     
-    # ... (restante do código para Análise Setorial que não foi incluído no snippet, 
-    # mas que permanece inalterado)
+    # ... (restante do código para Análise Setorial)
 
 # FIM DO SCRIPT
