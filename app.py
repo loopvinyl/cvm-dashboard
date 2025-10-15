@@ -235,7 +235,7 @@ def calcular_ranking_dividendos(tickers_consistentes, periodo_dy_anos=10):
     with st.spinner(f"Calculando DY médio para {len(tickers_consistentes)} empresas..."):
         total_steps = len(tickers_consistentes)
         progress_bar = st.progress(0, text="Buscando dados de mercado...")
-        for i, ticker:
+        for i, ticker in enumerate(tickers_consistentes):
             pass # O corpo desta função estava incompleto no app.py_incompleto.txt e foi mantido com 'pass' para cumprir a regra de não remoção.
             
 # =========================================================================================
@@ -245,8 +245,8 @@ def calcular_ranking_dividendos(tickers_consistentes, periodo_dy_anos=10):
 # ==============================
 # CONFIGURAÇÕES INICIAIS
 # ==============================
-st.set_page_config(page_title="Dashboard CVM - Indicadores", layout="wide") [cite: 265]
-st.title("Dashboard CVM: Análise das Demonstrações Financeiras") [cite: 265]
+st.set_page_config(page_title="Dashboard CVM - Indicadores", layout="wide")
+st.title("Dashboard CVM: Análise das Demonstrações Financeiras")
 
 # ==============================
 # LEITURA DE DADOS
@@ -257,7 +257,7 @@ def load_data():
     possible_paths = [
         "/content/dff_2010_2024.xlsx",   # Google Colab
         "dff_2010_2024.xlsx",            # mesma pasta do app
-        "./data/dff_2010_2024.xlsx"      # subpasta data/ [cite: 266]
+        "./data/dff_2010_2024.xlsx"      # subpasta data/
     ]
     data_path = None
     for path in possible_paths:
@@ -270,7 +270,7 @@ def load_data():
             "❌ Arquivo 'dff_2010_2024.xlsx' não encontrado.\n\n"
             "Coloque o arquivo na mesma pasta do app ou em /content/ (se estiver no Colab),\n"
             "ou salve em ./data/dff_2010_2024.xlsx.\n\n"
-            "Caminhos verificados:\n- " + "\n- ".join(possible_paths) [cite: 267]
+            "Caminhos verificados:\n- " + "\n- ".join(possible_paths)
         )
         st.stop()
 
@@ -289,10 +289,10 @@ def load_data():
     # =============================================================
     
     # 1. Ativo Médio ✅ CORRETO
-    df["Ativo Médio"] = (df["Ativo Total"] + df.groupby("Ticker")["Ativo Total"].shift(1)) / 2 [cite: 268]
+    df["Ativo Médio"] = (df["Ativo Total"] + df.groupby("Ticker")["Ativo Total"].shift(1)) / 2
 
     # 2. PL Médio ✅ CORRETO
-    df["PL Médio"] = (df["Patrimônio Líquido Consolidado"] + df.groupby("Ticker")["Patrimônio Líquido Consolidado"].shift(1)) / 2 [cite: 269]
+    df["PL Médio"] = (df["Patrimônio Líquido Consolidado"] + df.groupby("Ticker")["Patrimônio Líquido Consolidado"].shift(1)) / 2
 
     # 3. Passivo Oneroso Médio ✅ CORRIGIDO
     df["Passivo Oneroso Atual"] = (
@@ -301,9 +301,9 @@ def load_data():
     )
     df["Passivo Oneroso Anterior"] = (
         df.groupby("Ticker")["Empréstimos e Financiamentos - Circulante"].shift(1).fillna(0) +
-        df.groupby("Ticker")["Empréstimos e Financiamentos - Não Circulante"].shift(1).fillna(0) [cite: 270]
+        df.groupby("Ticker")["Empréstimos e Financiamentos - Não Circulante"].shift(1).fillna(0)
     )
-    df["Passivo Oneroso Médio"] = (df["Passivo Oneroso Atual"] + df["Passivo Oneroso Anterior"]) / 2 [cite: 270]
+    df["Passivo Oneroso Médio"] = (df["Passivo Oneroso Atual"] + df["Passivo Oneroso Anterior"]) / 2
 
     # 4. Investimento Médio ✅ CORRIGIDO
     df["Investimento Atual"] = (
@@ -314,9 +314,9 @@ def load_data():
     df["Investimento Anterior"] = (
         df.groupby("Ticker")["Empréstimos e Financiamentos - Circulante"].shift(1).fillna(0) +
         df.groupby("Ticker")["Empréstimos e Financiamentos - Não Circulante"].shift(1).fillna(0) +
-        df.groupby("Ticker")["Patrimônio Líquido Consolidado"].shift(1).fillna(0) [cite: 271]
+        df.groupby("Ticker")["Patrimônio Líquido Consolidado"].shift(1).fillna(0)
     )
-    df["Investimento Médio"] = (df["Investimento Atual"] + df["Investimento Anterior"]) / 2 [cite: 271]
+    df["Investimento Médio"] = (df["Investimento Atual"] + df["Investimento Anterior"]) / 2
 
     # =============================================================
     # INDICADORES DE RENTABILIDATE - CORRIGIDOS
@@ -325,21 +325,21 @@ def load_data():
     # ROA = Resultado Antes do Resultado Financeiro e dos Tributos / Ativo Médio
     df["ROA"] = np.where(
         df["Ativo Médio"] > 0,
-        df["Resultado Antes do Resultado Financeiro e dos Tributos"] / df["Ativo Médio"], [cite: 272]
+        df["Resultado Antes do Resultado Financeiro e dos Tributos"] / df["Ativo Médio"],
         np.nan
     )
 
     # ROI = Resultado Antes do Resultado Financeiro e dos Tributos / Investimento Médio
     df["ROI"] = np.where(
         df["Investimento Médio"] > 0,
-        df["Resultado Antes do Resultado Financeiro e dos Tributos"] / df["Investimento Médio"], [cite: 272]
+        df["Resultado Antes do Resultado Financeiro e dos Tributos"] / df["Investimento Médio"],
         np.nan
     )
 
     # ROE = Lucro Líquido / PL Médio
     df["ROE"] = np.where(
         df["PL Médio"] > 0,
-        df["Lucro/Prejuízo Consolidado do Período"] / df["PL Médio"], [cite: 273]
+        df["Lucro/Prejuízo Consolidado do Período"] / df["PL Médio"],
         np.nan
     )
 
@@ -350,21 +350,21 @@ def load_data():
     # Margem Bruta = Resultado Bruto / Receita
     df["Margem Bruta"] = np.where(
         df["Receita de Venda de Bens e/ou Serviços"] > 0,
-        df["Resultado Bruto"] / df["Receita de Venda de Bens e/ou Serviços"], [cite: 274]
+        df["Resultado Bruto"] / df["Receita de Venda de Bens e/ou Serviços"],
         np.nan
     )
 
     # Margem Operacional = Resultado Operacional / Receita
     df["Margem Operacional"] = np.where(
         df["Receita de Venda de Bens e/ou Serviços"] > 0,
-        df["Resultado Antes do Resultado Financeiro e dos Tributos"] / df["Receita de Venda de Bens e/ou Serviços"], [cite: 274]
+        df["Resultado Antes do Resultado Financeiro e dos Tributos"] / df["Receita de Venda de Bens e/ou Serviços"],
         np.nan
     )
 
     # Margem Líquida = Lucro Líquido / Receita
     df["Margem Líquida"] = np.where(
         df["Receita de Venda de Bens e/ou Serviços"] > 0,
-        df["Lucro/Prejuízo Consolidado do Período"] / df["Receita de Venda de Bens e/ou Serviços"], [cite: 275]
+        df["Lucro/Prejuízo Consolidado do Período"] / df["Receita de Venda de Bens e/ou Serviços"],
         np.nan
     )
 
@@ -376,20 +376,20 @@ def load_data():
     df["Total Passivo"] = (
         df["Passivo Circulante"].fillna(0) + 
         df["Passivo Não Circulante"].fillna(0) + 
-        df["Patrimônio Líquido Consolidado"].fillna(0) [cite: 276]
+        df["Patrimônio Líquido Consolidado"].fillna(0)
     )
 
     # Percentual Capital Terceiros = (Passivo Circulante + Passivo Não Circulante) / Total Passivo
     df["Percentual Capital Terceiros"] = np.where(
         df["Total Passivo"] > 0,
-        (df["Passivo Circulante"].fillna(0) + df["Passivo Não Circulante"].fillna(0)) / df["Total Passivo"], [cite: 277]
+        (df["Passivo Circulante"].fillna(0) + df["Passivo Não Circulante"].fillna(0)) / df["Total Passivo"],
         np.nan
     )
 
     # Percentual Capital Próprio = Patrimônio Líquido / Total Passivo
     df["Percentual Capital Próprio"] = np.where(
         df["Total Passivo"] > 0,
-        df["Patrimônio Líquido Consolidado"] / df["Total Passivo"], [cite: 277]
+        df["Patrimônio Líquido Consolidado"] / df["Total Passivo"],
         np.nan
     )
 
@@ -400,14 +400,14 @@ def load_data():
     # ki (Custo da Dívida) = Despesas Financeiras / Passivo Oneroso Médio
     df["ki"] = np.where(
         (df["Passivo Oneroso Médio"] > 0) & (df["Despesas Financeiras"].notna()),
-        df["Despesas Financeiras"].abs() / df["Passivo Oneroso Médio"], [cite: 278]
+        df["Despesas Financeiras"].abs() / df["Passivo Oneroso Médio"],
         np.nan
     )
 
     # ke (Custo do Capital Próprio) = Dividendos Pagos / PL Médio
     df["ke"] = np.where(
         (df["PL Médio"] > 0) & (df["Pagamento de Dividendos"].notna()),
-        df["Pagamento de Dividendos"].abs() / df["PL Médio"], [cite: 279]
+        df["Pagamento de Dividendos"].abs() / df["PL Médio"],
         np.nan
     )
 
@@ -415,7 +415,7 @@ def load_data():
     df["wacc"] = np.where(
         (df["ki"].notna()) & (df["ke"].notna()) & 
         (df["Percentual Capital Terceiros"].notna()) & (df["Percentual Capital Próprio"].notna()),
-        (df["ki"] * df["Percentual Capital Terceiros"]) + (df["ke"] * df["Percentual Capital Próprio"]), [cite: 279]
+        (df["ki"] * df["Percentual Capital Terceiros"]) + (df["ke"] * df["Percentual Capital Próprio"]),
         np.nan
     )
 
@@ -436,13 +436,13 @@ def load_data():
         depreciacao_amortizacao = abs(df[nome_coluna_da].fillna(0))
         df["EBITDA"] = np.where(
             df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna(),
-            df["Resultado Antes do Resultado Financeiro e dos Tributos"] + depreciacao_amortizacao, [cite: 192, 193]
+            df["Resultado Antes do Resultado Financeiro e dos Tributos"] + depreciacao_amortizacao,
             np.nan
         )
     else:
         # Se não temos dados de depreciação/amortização consolidada, usar aproximação
         df["EBITDA"] = df["Resultado Antes do Resultado Financeiro e dos Tributos"]
-        st.warning("⚠️ Dados de Depreciação/Amortização não encontrados. EBITDA calculado como aproximação do Resultado Operacional.") [cite: 193, 194]
+        st.warning("⚠️ Dados de Depreciação/Amortização não encontrados. EBITDA calculado como aproximação do Resultado Operacional.")
 
     # =============================================================
     # LUCRO ECONÔMICO - CORRIGIDOS CONFORME VELLANI
@@ -451,19 +451,19 @@ def load_data():
     # LUCRO ECONÔMICO 1 = (ROI - WACC) × Investimento Médio
     df["Lucro Econômico 1"] = np.where(
         (df["ROI"].notna()) & (df["wacc"].notna()) & (df["Investimento Médio"].notna()),
-        (df["ROI"] - df["wacc"]) * df["Investimento Médio"], [cite: 194]
+        (df["ROI"] - df["wacc"]) * df["Investimento Médio"],
         np.nan
     )
 
     # LUCRO ECONÔMICO 2 = Resultado Operacional - (WACC × Investimento Médio)
     df["Lucro Econômico 2"] = np.where(
         (df["Resultado Antes do Resultado Financeiro e dos Tributos"].notna()) & (df["wacc"].notna()) & (df["Investimento Médio"].notna()),
-        df["Resultado Antes do Resultado Financeiro e dos Tributos"] - (df["wacc"] * df["Investimento Médio"]), [cite: 194]
+        df["Resultado Antes do Resultado Financeiro e dos Tributos"] - (df["wacc"] * df["Investimento Médio"]),
         np.nan
     )
 
     # VERIFICAÇÃO DE CONSISTÊNCIA
-    df["Diferença Lucro Econômico"] = abs(df["Lucro Econômico 1"] - df["Lucro Econômico 2"]) [cite: 195]
+    df["Diferença Lucro Econômico"] = abs(df["Lucro Econômico 1"] - df["Lucro Econômico 2"])
 
     # =============================================================
     # ANÁLISE DE ALAVANCAGEM - ✅ CORRETO
@@ -472,7 +472,7 @@ def load_data():
     # Verifica se a alavancagem é eficaz (ROE > ROA e ROE > ROI)
     df["Alavancagem Eficaz"] = np.where(
         (df["ROE"].notna()) & (df["ROA"].notna()) & (df["ROI"].notna()),
-        (df["ROE"] > df["ROA"]) & (df["ROE"] > df["ROI"]), [cite: 195]
+        (df["ROE"] > df["ROA"]) & (df["ROE"] > df["ROI"]),
         False
     )
     
@@ -487,7 +487,7 @@ def calcular_valuation_lucro_economico_selic(lucro_economico, selic_percentual=1
     Fórmula CORRETA: Valor da Empresa = Lucro Econômico ÷ (SELIC/100)
     """
     if lucro_economico and lucro_economico > 0:
-        valor_empresa = lucro_economico / (selic_percentual / 100) [cite: 195, 196]
+        valor_empresa = lucro_economico / (selic_percentual / 100)
         return valor_empresa
     return None
 
@@ -538,23 +538,23 @@ def calcular_ranking_dividendos_completo(tickers_consistentes, periodo_dy_anos=1
     """
     dados_ranking = []
     if not tickers_consistentes:
-        return pd.DataFrame() [cite: 681]
+        return pd.DataFrame()
 
-    st.warning(f"⚠️ **Busca em tempo real (yfinance):** Calculando DY médio de {periodo_dy_anos} anos para {len(tickers_consistentes)} tickers consistentes.") [cite: 681]
+    st.warning(f"⚠️ **Busca em tempo real (yfinance):** Calculando DY médio de {periodo_dy_anos} anos para {len(tickers_consistentes)} tickers consistentes.")
     
-    with st.spinner(f"Calculando DY médio para {len(tickers_consistentes)} empresas..."): [cite: 681]
+    with st.spinner(f"Calculando DY médio para {len(tickers_consistentes)} empresas..."):
         total_steps = len(tickers_consistentes)
-        progress_bar = st.progress(0, text="Buscando dados de mercado...") [cite: 681]
+        progress_bar = st.progress(0, text="Buscando dados de mercado...")
 
         for i, ticker in enumerate(tickers_consistentes):
             
             # 1. Buscar Cotação e Setor
-            dados_cotacao = buscar_cotacao_atual(ticker) [cite: 681]
+            dados_cotacao = buscar_cotacao_atual(ticker)
 
             # 2. Buscar Histórico de Preços e Dividendos
             data_inicio = datetime.now() - timedelta(days=365 * periodo_dy_anos)
             # Buscando todo o histórico (max) para garantir preço final do ano
-            df_historico_precos = buscar_historico_precos(ticker, "max") [cite: 682]
+            df_historico_precos = buscar_historico_precos(ticker, "max")
             df_dividendos = buscar_dividendos_historicos(ticker)
 
             dy_medio_10a = None
@@ -562,13 +562,13 @@ def calcular_ranking_dividendos_completo(tickers_consistentes, periodo_dy_anos=1
             if dados_cotacao and df_historico_precos is not None and df_dividendos is not None and not df_dividendos.empty:
                 
                 # Filtrar histórico e dividendos para os últimos 10 anos (ou menos se não houver dados)
-                df_historico_precos_filtrado = df_historico_precos[df_historico_precos.index >= data_inicio] [cite: 682]
+                df_historico_precos_filtrado = df_historico_precos[df_historico_precos.index >= data_inicio]
                 df_dividendos_filtrado = df_dividendos[df_dividendos['Data'] >= data_inicio]
 
                 if not df_historico_precos_filtrado.empty and not df_dividendos_filtrado.empty:
                     
                     # 1. Agrupar dividendos por ano
-                    df_dividendos_anual = df_dividendos_filtrado.groupby(df_dividendos_filtrado['Data'].dt.year)['Dividendo'].sum() [cite: 682]
+                    df_dividendos_anual = df_dividendos_filtrado.groupby(df_dividendos_filtrado['Data'].dt.year)['Dividendo'].sum()
                     
                     # 2. Pegar o preço de fechamento no final de cada ano (ou o preço de fechamento mais próximo)
                     precos_anuais = {}
@@ -711,8 +711,8 @@ def calcular_simulacao_investimento(ticker, data_compra, valor_investido):
             'rentabilidade_dividendos_percentual': rentabilidade_dividendos_percentual,
             'rentabilidade_total_percentual': rentabilidade_total_percentual,
             'nome': dados_cotacao.get('nome', ticker),
-            'setor': dados_cotacao.get('setor', 'N/A'),
-            'industria': dados_cotacao.get('industria', 'N/A'),
+            'setor': dados_cotacao.get('sector', 'N/A'),
+            'industria': dados_cotacao.get('industry', 'N/A'),
         }
 
     except Exception as e:
@@ -750,7 +750,7 @@ if industria_selecionada != 'Todas':
 # Seleção de Modo de Análise
 modo_analise = st.sidebar.radio(
     "Selecione o Modo de Análise",
-    ("📊 Dados Gerais e Indicadores", "🏆 Ranking de Dividendos", "💰 Simulador de Investimento"),
+    ("📊 Dados Gerais e Indicadores", "🏆 Ranking de Dividendos", "💰 Simulador de Investimento", "🏭 Análise Setorial"),
     index=0
 )
 
@@ -906,8 +906,7 @@ if modo_analise == "📊 Dados Gerais e Indicadores":
     fig_le.update_layout(hovermode="x unified")
     fig_le.update_yaxes(tickprefix="R$ ", separatethousands=True)
     st.plotly_chart(fig_le, use_container_width=True)
-
-
+    
     # ==============================
     # DADOS BRUTOS (TABELA)
     # ==============================
